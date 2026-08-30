@@ -7,7 +7,7 @@ GM.Name      = "MintyRP"
 GM.Author    = "MintyRP Team"
 GM.Email     = ""
 GM.Website   = ""
-GM.Version   = "0.1.1"
+GM.Version   = "0.1.2"
 GM.TeamBased = false
 
 DeriveGamemode("base")
