@@ -6,7 +6,6 @@
 AddCSLuaFile("cl_init.lua")
 AddCSLuaFile("shared.lua")
 
--- Register net strings before modules load receivers / senders
 util.AddNetworkString("MintyRP_Notify")
 util.AddNetworkString("MintyRP_InventorySync")
 util.AddNetworkString("MintyRP_InventoryAction")
@@ -30,6 +29,39 @@ local ipairs = ipairs
 local player = player
 local timer = timer
 local string_format = string.format
+
+--- Give the standard RP loadout. Safe if a SWEP is missing.
+function MintyRP.GiveLoadout(ply)
+	if not IsValid(ply) then return end
+	if not ply.MintyRP or not ply.MintyRP.Loaded then return end
+	if ply.MintyRP.InCharacterMenu then return end
+
+	ply:StripWeapons()
+	ply:StripAmmo()
+
+	local function tryGive(class)
+		local ok, wep = pcall(function()
+			return ply:Give(class, true)
+		end)
+		if ok and IsValid(wep) then return wep end
+		-- Fallback without second arg (older GMod)
+		ok, wep = pcall(function()
+			return ply:Give(class)
+		end)
+		if ok and IsValid(wep) then return wep end
+		print("[MintyRP] Could not give weapon: " .. tostring(class))
+		return nil
+	end
+
+	tryGive("weapon_fists")
+	tryGive("weapon_physgun")
+	local keys = tryGive("mintyrp_keys")
+	if IsValid(keys) then
+		ply:SelectWeapon("mintyrp_keys")
+	else
+		ply:SelectWeapon("weapon_physgun")
+	end
+end
 
 function GM:Initialize()
 	print("[MintyRP] Server initializing...")
@@ -60,7 +92,6 @@ function GM:PlayerInitialSpawn(ply)
 
 	timer.Simple(0.5, function()
 		if not IsValid(ply) then return end
-
 		if MintyRP.Player and MintyRP.Player.Load then
 			MintyRP.Player.Load(ply)
 		end
@@ -83,6 +114,16 @@ function GM:PlayerSpawn(ply)
 	if MintyRP.Player and MintyRP.Player.OnSpawn then
 		MintyRP.Player.OnSpawn(ply)
 	end
+
+	-- Base gamemode does NOT always call PlayerLoadout — do it ourselves.
+	self:PlayerLoadout(ply)
+
+	-- One more pass next tick (fixes listen-server race after char create)
+	timer.Simple(0.1, function()
+		if IsValid(ply) then
+			MintyRP.GiveLoadout(ply)
+		end
+	end)
 end
 
 function GM:PlayerSetHandsModel(ply, ent)
@@ -95,17 +136,7 @@ function GM:PlayerSetHandsModel(ply, ent)
 end
 
 function GM:PlayerLoadout(ply)
-	ply:StripWeapons()
-	ply:StripAmmo()
-
-	if not ply.MintyRP or not ply.MintyRP.Loaded or ply.MintyRP.InCharacterMenu then
-		return true
-	end
-
-	ply:Give("weapon_fists")
-	ply:Give("weapon_physgun")
-	ply:Give("mintyrp_keys")
-	ply:SelectWeapon("mintyrp_keys")
+	MintyRP.GiveLoadout(ply)
 	return true
 end
 
@@ -118,7 +149,6 @@ end
 
 function GM:PlayerDisconnected(ply)
 	if not IsValid(ply) then return end
-
 	if MintyRP.Player and MintyRP.Player.Save then
 		MintyRP.Player.Save(ply)
 	end
@@ -130,7 +160,6 @@ function GM:ShutDown()
 			MintyRP.Player.Save(ply)
 		end
 	end
-
 	if MintyRP.Database and MintyRP.Database.Close then
 		MintyRP.Database.Close()
 	end

@@ -303,6 +303,19 @@ end
 
 function Prop.IsOwnable(id)
 	local def = Prop.List[id]
+	if not def then return false end
+	if def.ownable == nil then return true end
+	return def.ownable == true
+end
+
+function Prop.GetOwnerLabel(def)
+	if not def then return "Unknown property" end
+	if def.ownable ~= false then return "For sale" end
+	if def.ownerType == "franchise" then return "Franchise — not for sale" end
+	return "City property — not for sale"
+end
+
+function Prop.GetSorted()
 	return def and def.ownable == true
 end
 

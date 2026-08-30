@@ -59,6 +59,12 @@ function Char.ReleaseFromMenu(ply)
 		if not IsValid(ply) then return end
 		if not ply.MintyRP or not ply.MintyRP.Loaded then return end
 		ply:Spawn()
+
+		timer.Simple(0.15, function()
+			if IsValid(ply) and MintyRP.GiveLoadout then
+				MintyRP.GiveLoadout(ply)
+			end
+		end)
 	end)
 end
 

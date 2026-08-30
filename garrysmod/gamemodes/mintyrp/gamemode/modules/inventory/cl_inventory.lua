@@ -151,11 +151,6 @@ function INV.Open()
 	INV.RebuildList()
 end
 
-hook.Add("PlayerButtonDown", "MintyRP_InventoryKey", function(ply, button)
-	if ply ~= LocalPlayer() then return end
-	if button == KEY_F2 then
-		INV.Open()
-	end
-end)
+-- Key binds handled in core/cl_binds.lua (F2 / mintyrp_inventory)
 
 print("[MintyRP] Inventory client loaded")

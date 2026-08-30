@@ -224,6 +224,7 @@ function Prop.OpenMenu()
 	sheet:AddSheet("Catalog", catalog, "icon16/house.png")
 end
 
+-- Key binds handled in core/cl_binds.lua (F2/F3/N)
 hook.Add("PlayerButtonDown", "MintyRP_PropertyKeys", function(ply, button)
 	if ply ~= LocalPlayer() then return end
 	if not ply.MintyRP or not ply.MintyRP.Loaded then return end

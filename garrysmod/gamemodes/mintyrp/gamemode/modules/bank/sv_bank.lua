@@ -104,7 +104,6 @@ net.Receive("MintyRP_BankAction", function(len, ply)
 end)
 
 function Bank.SpawnTeller()
-	-- Remove old auto-spawned tellers
 	for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
 		if IsValid(ent) and ent.MintyRP_AutoSpawn then
 			ent:Remove()
@@ -115,26 +114,48 @@ function Bank.SpawnTeller()
 	local pos = loc and loc.pos or Vector(-3200, 400, 80)
 	local ang = loc and loc.ang or Angle(0, 90, 0)
 
-	local npc = ents.Create("mintyrp_bank_npc")
-	if not IsValid(npc) then
-		print("[MintyRP] Failed to create bank NPC")
+	if not scripted_ents.Get("mintyrp_bank_npc") then
+		print("[MintyRP] ERROR: mintyrp_bank_npc is not registered (entities folder missing?)")
 		return
 	end
 
-	npc:SetPos(pos + Vector(0, 0, 10))
+	local npc = ents.Create("mintyrp_bank_npc")
+	if not IsValid(npc) then
+		print("[MintyRP] Failed to create bank NPC entity")
+		return
+	end
+
+	npc:SetPos(pos + Vector(0, 0, 8))
 	npc:SetAngles(ang)
 	npc.MintyRP_AutoSpawn = true
 	npc:Spawn()
 	npc:Activate()
-	print("[MintyRP] Bank teller spawned at " .. tostring(pos))
+	print("[MintyRP] Bank teller spawned at " .. tostring(npc:GetPos()))
 end
 
-hook.Add("InitPostEntity", "MintyRP_BankSpawn", function()
-	timer.Simple(3, Bank.SpawnTeller)
-end)
+local function ensureBank()
+	timer.Simple(2, function()
+		local found = false
+		for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
+			if IsValid(ent) then found = true break end
+		end
+		if not found then
+			print("[MintyRP] No bank teller found — spawning")
+			Bank.SpawnTeller()
+		end
+	end)
+end
 
-hook.Add("PostCleanupMap", "MintyRP_BankRespawn", function()
-	timer.Simple(3, Bank.SpawnTeller)
+hook.Add("InitPostEntity", "MintyRP_BankSpawn", ensureBank)
+hook.Add("PostCleanupMap", "MintyRP_BankRespawn", ensureBank)
+hook.Add("PlayerInitialSpawn", "MintyRP_BankEnsure", function()
+	timer.Simple(4, function()
+		local n = 0
+		for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
+			if IsValid(ent) then n = n + 1 end
+		end
+		if n == 0 then Bank.SpawnTeller() end
+	end)
 end)
 
 print("[MintyRP] Bank server loaded")
