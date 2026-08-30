@@ -1,0 +1,28 @@
+--[[-------------------------------------------------------------------------
+	MintyRP — Example dedicated server config
+	Copy relevant lines into garrysmod/cfg/server.cfg
+---------------------------------------------------------------------------]]
+
+hostname          "MintyRP | Rockford"
+sv_password       ""
+sbox_godmode      0
+sbox_playershurtplayers 1
+
+-- Map / gamemode (also set via startup args: +gamemode mintyrp +map rp_rockford_v2b)
+-- gamemode is usually passed on the command line
+
+-- Custom loading screen (HOST the /loading folder on HTTPS, then set this URL)
+-- Include ?steamid=%s so the page can personalize if you extend it later.
+sv_loadingurl     "https://YOUR_DOMAIN_OR_PAGES_URL/mintyrp/loading/index.html?steamid=%s"
+
+-- Networking / downloads
+sv_allowdownload  1
+sv_allowupload    0
+sv_downloadurl    ""  -- optional FastDL base URL for content
+
+-- Voice / chat
+sv_alltalk        0
+
+-- Useful MintyRP defaults (from mintyrp.txt settings)
+mintyrp_startmoney      500
+mintyrp_inv_maxweight   50

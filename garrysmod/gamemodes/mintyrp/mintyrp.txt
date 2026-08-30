@@ -1,0 +1,29 @@
+"mintyrp"
+{
+	"base"		"base"
+	"title"		"MintyRP"
+	"maps"		"^rp_rockford"
+	"menusystem"	"1"
+	"workshopid"	""
+
+	"settings"
+	{
+		1
+		{
+			"name"		"mintyrp_startmoney"
+			"text"		"Starting Money"
+			"help"		"Cash given to new characters on first spawn"
+			"type"		"Numeric"
+			"default"	"500"
+		}
+
+		2
+		{
+			"name"		"mintyrp_inv_maxweight"
+			"text"		"Max Inventory Weight"
+			"help"		"Default personal inventory weight capacity"
+			"type"		"Numeric"
+			"default"	"50"
+		}
+	}
+}
