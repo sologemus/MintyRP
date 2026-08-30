@@ -17,7 +17,7 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "bank",
 		title = "Bank tellers",
-		body = "Look for a green beacon — that's a bank teller.\n\nThere's one at civilian spawn (City Spawn Kiosk) plus desks at the bank and gas stations.\n\nPress E to deposit or withdraw. Console: mintyrp_tpteller",
+		body = "Bank tellers are placed by the host (green beacon).\n\nPress E to deposit or withdraw.\nIf none exist yet, host: stand at the desk → mintyrp_setteller bank",
 	},
 	{
 		id = "keys",
