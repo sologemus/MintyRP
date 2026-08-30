@@ -4,6 +4,7 @@
 
 	F3  — manage owned properties
 	Look at a door — buy / lock hints
+	Dynamic units sync name/price via NW vars (not in shared catalog).
 ---------------------------------------------------------------------------]]
 
 if not CLIENT then return end
@@ -14,10 +15,10 @@ local Prop = MintyRP.Property
 local LocalPlayer = LocalPlayer
 local IsValid = IsValid
 local draw = draw
-local surface = surface
 local ScrW, ScrH = ScrW, ScrH
 
 Prop.Owned = Prop.Owned or {} -- id → locked bool
+Prop.OwnedNames = Prop.OwnedNames or {}
 
 local menuFrame
 local colMint = Color(62, 207, 142)
@@ -32,13 +33,42 @@ local function sendAction(action, propertyId)
 	net.SendToServer()
 end
 
+--- Resolve display info from catalog OR door NW vars (dynamic units)
+function Prop.DoorInfo(door)
+	if not IsValid(door) then return nil end
+	local id = door:GetNWString("MintyRP_Property", "")
+	if id == "" then return nil end
+
+	local def = Prop.Get(id)
+	local ownable = door:GetNWBool("MintyRP_Ownable", def and def.ownable)
+	local name = door:GetNWString("MintyRP_PropName", "")
+	if name == "" then
+		name = Prop.OwnedNames[id] or (def and def.name) or id
+	end
+	local price = door:GetNWInt("MintyRP_PropPrice", 0)
+	if price <= 0 and def then
+		price = def.price or 0
+	end
+
+	return {
+		id = id,
+		name = name,
+		ownable = ownable,
+		price = price,
+		def = def,
+	}
+end
+
 net.Receive("MintyRP_PropertySync", function()
 	local count = net.ReadUInt(8)
 	Prop.Owned = {}
+	Prop.OwnedNames = {}
 	for i = 1, count do
 		local id = net.ReadString()
+		local name = net.ReadString()
 		local locked = net.ReadBool()
 		Prop.Owned[id] = locked
+		Prop.OwnedNames[id] = name
 	end
 end)
 
@@ -47,7 +77,7 @@ local function tracedDoor()
 	if not IsValid(ply) then return nil end
 	local tr = ply:GetEyeTrace()
 	if not tr or not IsValid(tr.Entity) then return nil end
-	if tr.HitPos:DistToSqr(ply:EyePos()) > (150 * 150) then return nil end
+	if tr.HitPos:DistToSqr(ply:EyePos()) > (180 * 180) then return nil end
 	if not Prop.IsDoor(tr.Entity) then return nil end
 	return tr.Entity
 end
@@ -60,32 +90,35 @@ hook.Add("HUDPaint", "MintyRP_PropertyDoorHint", function()
 	local door = tracedDoor()
 	if not door then return end
 
-	local id = door:GetNWString("MintyRP_Property", "")
-	if id == "" then return end
-	local def = Prop.Get(id)
-	if not def then return end
+	local info = Prop.DoorInfo(door)
+	if not info then
+		local x, y = ScrW() * 0.5, ScrH() * 0.62
+		draw.SimpleText("Door", "DermaDefaultBold", x, y, colDim, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+		draw.SimpleText("Not linked — host: mintyrp_propscan", "DermaDefault", x, y + 18, colDim, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+		return
+	end
 
-	local owned = Prop.Owned[id] ~= nil
-	local locked = Prop.Owned[id]
+	local owned = Prop.Owned[info.id] ~= nil
+	local locked = Prop.Owned[info.id]
 	local x, y = ScrW() * 0.5, ScrH() * 0.62
 
-	draw.SimpleText(def.name, "DermaDefaultBold", x, y, colMint, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+	draw.SimpleText(info.name, "DermaDefaultBold", x, y, colMint, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
 	if owned then
 		draw.SimpleText(
 			(locked and "Locked" or "Unlocked") .. "  ·  [F3] Manage  ·  Keys: LMB/RMB",
 			"DermaDefault",
 			x, y + 18, colText, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
 		)
-	elseif not def.ownable then
-		draw.SimpleText(
-			Prop.GetOwnerLabel(def),
-			"DermaDefault",
-			x, y + 18, Color(220, 160, 90), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
-		)
+	elseif not info.ownable then
+		local label = "City / franchise — not for sale"
+		if info.def then
+			label = Prop.GetOwnerLabel(info.def)
+		end
+		draw.SimpleText(label, "DermaDefault", x, y + 18, Color(220, 160, 90), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
 	else
-		local price = MintyRP.Util and MintyRP.Util.FormatMoney(def.price) or ("$" .. def.price)
+		local price = MintyRP.Util and MintyRP.Util.FormatMoney(info.price) or ("$" .. info.price)
 		draw.SimpleText(
-			"For sale: " .. price .. "  ·  Press [N] to buy",
+			"For sale: " .. price .. "  ·  Press [N] to buy (cash or bank)",
 			"DermaDefault",
 			x, y + 18, colText, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
 		)
@@ -115,20 +148,20 @@ function Prop.OpenMenu()
 	sheet:Dock(FILL)
 	sheet:DockMargin(12, 64, 12, 12)
 
-	-- Owned
 	local ownedPanel = vgui.Create("DScrollPanel", sheet)
 	local count = 0
 	for id, locked in pairs(Prop.Owned) do
 		count = count + 1
 		local def = Prop.Get(id)
+		local title = Prop.OwnedNames[id] or (def and def.name) or id
 		local row = ownedPanel:Add("DPanel")
 		row:Dock(TOP)
 		row:SetTall(72)
 		row:DockMargin(0, 0, 0, 8)
 		row.Paint = function(_, w, h)
 			draw.RoundedBox(4, 0, 0, w, h, Color(22, 32, 28))
-			draw.SimpleText(def and def.name or id, "DermaDefaultBold", 12, 10, colText)
-			local meta = (def and def.district or "?") .. " · " .. (def and def.category or "?")
+			draw.SimpleText(title, "DermaDefaultBold", 12, 10, colText)
+			local meta = def and ((def.district or "?") .. " · " .. (def.category or "?")) or "dynamic unit"
 			draw.SimpleText(meta .. "  ·  " .. (locked and "Locked" or "Unlocked"), "DermaDefault", 12, 32, colDim)
 		end
 
@@ -171,14 +204,13 @@ function Prop.OpenMenu()
 	end
 	sheet:AddSheet("Owned", ownedPanel, "icon16/key.png")
 
-	-- Catalog: For Sale + Reserved
 	local catalog = vgui.Create("DScrollPanel", sheet)
-	local sorted = Prop.GetSorted and Prop.GetSorted() or {}
+	local sorted = Prop.GetSorted and Prop.GetSorted(function(d) return not d.dynamic end) or {}
 	local lastDistrict = ""
 	local section = ""
 	for i = 1, #sorted do
 		local def = sorted[i]
-		local sec = def.ownable and "FOR SALE" or "CITY / FRANCHISE"
+		local sec = def.ownable and "FOR SALE (catalog)" or "CITY / FRANCHISE"
 		if sec ~= section then
 			section = sec
 			lastDistrict = ""
@@ -221,31 +253,14 @@ function Prop.OpenMenu()
 			draw.SimpleText(right, "DermaDefault", w - 10, h * 0.5, rc, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 		end
 	end
+	local note = catalog:Add("DLabel")
+	note:Dock(TOP)
+	note:SetTall(40)
+	note:DockMargin(0, 12, 0, 0)
+	note:SetTextColor(colDim)
+	note:SetWrap(true)
+	note:SetText("Street doors auto-link into buyable units. Look at any door for price + [N].")
 	sheet:AddSheet("Catalog", catalog, "icon16/house.png")
 end
-
--- Key binds handled in core/cl_binds.lua (F2/F3/N)
-hook.Add("PlayerButtonDown", "MintyRP_PropertyKeys", function(ply, button)
-	if ply ~= LocalPlayer() then return end
-	if not ply.MintyRP or not ply.MintyRP.Loaded then return end
-
-	if button == KEY_F3 then
-		Prop.OpenMenu()
-		return
-	end
-
-	if button == KEY_N then
-		local door = tracedDoor()
-		if not door then return end
-		local id = door:GetNWString("MintyRP_Property", "")
-		if id == "" or Prop.Owned[id] ~= nil then return end
-		local def = Prop.Get(id)
-		if def and not def.ownable then
-			notification.AddLegacy(Prop.GetOwnerLabel(def), NOTIFY_ERROR, 3)
-			return
-		end
-		sendAction(1, id)
-	end
-end)
 
 print("[MintyRP] Property client loaded")

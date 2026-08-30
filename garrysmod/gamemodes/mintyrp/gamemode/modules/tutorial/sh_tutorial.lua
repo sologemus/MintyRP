@@ -17,12 +17,12 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "bank",
 		title = "Bank tellers",
-		body = "Look for a green beacon — that's a bank teller.\n\nThere's one at civilian spawn (City Spawn Kiosk) plus desks at the bank and gas stations.\n\nPress E to deposit or withdraw. Console: mintyrp_tpteller",
+		body = "Bank tellers are placed by the host (green beacon).\n\nPress E to deposit or withdraw.\nIf none exist yet, host: stand at the desk → mintyrp_setteller bank",
 	},
 	{
 		id = "keys",
 		title = "Keys & doors",
-		body = "You spawn with fists, a physgun, and keys.\n\nKeys: left-click lock / right-click unlock owned doors.\nWalk up to a for-sale door and press N to buy the property.",
+		body = "Walk up to any residential / shop door — you should see For sale + price.\n\nPress N to buy (uses cash first, then bank).\nKeys: left-click lock / right-click unlock owned doors.",
 	},
 	{
 		id = "menus",
