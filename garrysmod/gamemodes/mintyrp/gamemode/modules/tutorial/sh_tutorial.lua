@@ -27,7 +27,7 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "menus",
 		title = "Menus",
-		body = "F2 — Inventory (Use / Drop / Work jobs)\nE on a crate — dual-pane storage transfer\nF3 — Properties\nN — Buy the door you're looking at",
+		body = "F2 opens your inventory (PERP-style grid).\nDrag items between slots. Short click to use. Right-click to drop.\nE on a crate opens dual-pane storage like PERP's bank vault.",
 	},
 	{
 		id = "work",
