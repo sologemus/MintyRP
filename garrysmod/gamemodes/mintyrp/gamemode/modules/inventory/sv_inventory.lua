@@ -168,7 +168,8 @@ end
 
 net.Receive("MintyRP_InventoryAction", function(len, ply)
 	if not IsValid(ply) or not ply:Alive() then return end
-	if len > 128 then return end -- reject oversized packets
+	-- net.Receive len is BITS (not bytes)
+	if len > 2048 then return end
 	if rateLimited(ply) then return end
 	if not ply.MintyRP or not ply.MintyRP.Loaded then return end
 

@@ -267,7 +267,7 @@ function DB.NextSlot(steamid64)
 	return nil
 end
 
-function DB.CreateCharacter(steamid64, name, model)
+function DB.CreateCharacter(steamid64, name, model, appearance)
 	if not steamid64 or steamid64 == "" then return nil, "account" end
 
 	DB.EnsureAccount(steamid64)
@@ -284,23 +284,35 @@ function DB.CreateCharacter(steamid64, name, model)
 	local money = (MintyRP.Config and MintyRP.Config.StartMoney) or 500
 	local bank = (MintyRP.Config and MintyRP.Config.StartBank) or 0
 
-	sql_Query(string_format(
-		"INSERT INTO mintyrp_characters (steamid64, slot, name, model, money, bank, data, created_at, updated_at) VALUES (%s, %d, %s, %s, %d, %d, '{}', %d, %d)",
+	local dataObj = {
+		skin = appearance and appearance.skin or 0,
+		bodygroups = appearance and appearance.bodygroups or {},
+	}
+	local dataJson = util.TableToJSON(dataObj) or "{}"
+
+	local ok = sql_Query(string_format(
+		"INSERT INTO mintyrp_characters (steamid64, slot, name, model, money, bank, data, created_at, updated_at) VALUES (%s, %d, %s, %s, %d, %d, %s, %d, %d)",
 		sql_SQLStr(steamid64),
 		slot,
 		sql_SQLStr(name),
 		sql_SQLStr(model),
 		money,
 		bank,
+		sql_SQLStr(dataJson),
 		now,
 		now
 	))
 
-	if sql.LastError() ~= "" then
+	-- sql.Query returns false/nil on failure; LastError can be sticky from earlier queries
+	if ok == false then
 		return nil, "db"
 	end
 
 	local id = tonumber(sql_QueryValue("SELECT last_insert_rowid()"))
+	if not id then
+		return nil, "db"
+	end
+
 	return DB.GetCharacter(id, steamid64), nil
 end
 
