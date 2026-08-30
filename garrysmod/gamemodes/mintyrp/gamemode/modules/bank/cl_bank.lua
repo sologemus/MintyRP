@@ -1,5 +1,5 @@
 --[[-------------------------------------------------------------------------
-	MintyRP — Bank client UI
+	MintyRP — Bank / ATM client UI
 	Realm: CLIENT
 ---------------------------------------------------------------------------]]
 
@@ -9,8 +9,8 @@ MintyRP.Bank = MintyRP.Bank or {}
 
 local frame
 local colMint = Color(62, 207, 142)
+local colAtm = Color(120, 190, 255)
 local colBg = Color(14, 20, 18, 245)
-local colText = Color(230, 236, 232)
 local colDim = Color(150, 165, 158)
 
 local function sendBank(action, amount)
@@ -22,8 +22,11 @@ local function sendBank(action, amount)
 	net.SendToServer()
 end
 
-local function openBank(cash, bank)
+local function openBank(cash, bank, isATM)
 	if IsValid(frame) then frame:Remove() end
+
+	local accent = isATM and colAtm or colMint
+	local title = isATM and "ATM" or "Rockford Bank"
 
 	frame = vgui.Create("DFrame")
 	frame:SetSize(380, 260)
@@ -32,7 +35,7 @@ local function openBank(cash, bank)
 	frame:MakePopup()
 	frame.Paint = function(_, w, h)
 		draw.RoundedBox(6, 0, 0, w, h, colBg)
-		draw.SimpleText("Rockford Bank", "DermaLarge", 16, 12, colMint)
+		draw.SimpleText(title, "DermaLarge", 16, 12, accent)
 		draw.SimpleText("Cash " .. (MintyRP.Util and MintyRP.Util.FormatMoney(cash) or ("$" .. cash))
 			.. "   ·   Bank " .. (MintyRP.Util and MintyRP.Util.FormatMoney(bank) or ("$" .. bank)),
 			"DermaDefault", 16, 44, colDim)
@@ -84,13 +87,14 @@ end
 net.Receive("MintyRP_BankOpen", function()
 	local cash = net.ReadUInt(32)
 	local bank = net.ReadUInt(32)
+	local isATM = net.ReadBool()
 	local ply = LocalPlayer()
 	if IsValid(ply) then
 		ply.MintyRP = ply.MintyRP or {}
 		ply.MintyRP.money = cash
 		ply.MintyRP.bank = bank
 	end
-	openBank(cash, bank)
+	openBank(cash, bank, isATM)
 end)
 
 net.Receive("MintyRP_BankSync", function()

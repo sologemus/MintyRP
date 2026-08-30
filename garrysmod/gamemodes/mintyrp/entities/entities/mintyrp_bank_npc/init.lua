@@ -62,5 +62,6 @@ function ENT:OpenFor(ply)
 	net.Start("MintyRP_BankOpen")
 		net.WriteUInt(math.floor(ply.MintyRP.money or 0), 32)
 		net.WriteUInt(math.floor(ply.MintyRP.bank or 0), 32)
+		net.WriteBool(false) -- teller, not ATM
 	net.Send(ply)
 end
