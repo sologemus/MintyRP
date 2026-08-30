@@ -22,6 +22,7 @@ function SWEP:SecondaryAttack()
 	self:DoorAction(false)
 end
 
+-- Keys only work on ownable + owned properties
 function SWEP:DoorAction(lock)
 	local ply = self:GetOwner()
 	if not IsValid(ply) then return end
@@ -41,6 +42,11 @@ function SWEP:DoorAction(lock)
 	local id, def = MintyRP.Property.GetByDoor(tr.Entity)
 	if not id then
 		MintyRP.Util.Notify(ply, "This door isn't part of a property.", 2)
+		return
+	end
+
+	if not def.ownable then
+		MintyRP.Util.Notify(ply, MintyRP.Property.GetOwnerLabel(def), 2)
 		return
 	end
 

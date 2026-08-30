@@ -40,10 +40,19 @@ function Prop.Initialize()
 		local row = MintyRP.Database.GetProperty(id)
 		local locked = true
 		local owner = nil
-		if row then
+
+		if not def.ownable then
+			-- Strip any illegal ownership on reserved buildings
+			if row and row.owner_character_id then
+				MintyRP.Database.SetPropertyOwner(id, nil, def.doorPolicy ~= "public")
+			end
+			owner = nil
+			locked = def.doorPolicy ~= "public"
+		elseif row then
 			owner = tonumber(row.owner_character_id) or nil
 			locked = (tonumber(row.locked) or 1) == 1
 		end
+
 		Prop.State[id] = {
 			owner = owner,
 			locked = locked,
@@ -74,14 +83,24 @@ function Prop.ScanDoors()
 	for _, door in ipairs(doors) do
 		if IsValid(door) then
 			local pos = door:GetPos()
-			local bestId, bestDist
+			local bestId, bestScore
 
 			for id, def in pairs(Prop.List) do
 				local dist = pos:DistToSqr(def.center)
 				local r = def.radius or 200
-				if dist <= (r * r) and (not bestDist or dist < bestDist) then
-					bestDist = dist
-					bestId = id
+				if dist <= (r * r) then
+					-- Prefer tighter radii; slight bias to city/franchise so gov doors
+					-- aren't stolen by a nearby private unit center.
+					local score = dist
+					if not def.ownable then
+						score = score - 5000
+					end
+					-- tighter fit wins
+					score = score + (r * 0.15)
+					if not bestScore or score < bestScore then
+						bestScore = score
+						bestId = id
+					end
 				end
 			end
 
@@ -92,9 +111,15 @@ function Prop.ScanDoors()
 					Prop.DoorIndex[mid] = bestId
 				end
 				door:SetNWString("MintyRP_Property", bestId)
+				door:SetNWBool("MintyRP_Ownable", Prop.List[bestId].ownable == true)
 				linked = linked + 1
 
-				if Prop.State[bestId].locked then
+				local st = Prop.State[bestId]
+				local policy = Prop.List[bestId].doorPolicy or "owner"
+				if policy == "public" then
+					door:Fire("Unlock", "", 0)
+					st.locked = false
+				elseif st.locked then
 					door:Fire("Lock", "", 0)
 				else
 					door:Fire("Unlock", "", 0)
@@ -103,7 +128,12 @@ function Prop.ScanDoors()
 		end
 	end
 
-	print(string.format("[MintyRP] Linked %d doors across %d properties", linked, table.Count(Prop.List)))
+	local withDoors = 0
+	for id, st in pairs(Prop.State) do
+		if #st.doors > 0 then withDoors = withDoors + 1 end
+	end
+	print(string.format("[MintyRP] Linked %d doors → %d / %d properties have doors",
+		linked, withDoors, table.Count(Prop.List)))
 end
 
 function Prop.GetByDoor(ent)
@@ -169,6 +199,7 @@ function Prop.Buy(ply, propertyId)
 	local st = Prop.State[propertyId]
 	local cid = charId(ply)
 	if not def or not st or not cid then return false, "invalid" end
+	if not def.ownable then return false, "reserved" end
 	if st.owner then return false, "owned" end
 
 	local price = math_floor(def.price or 0)
@@ -189,6 +220,7 @@ function Prop.Sell(ply, propertyId)
 	local def = Prop.Get(propertyId)
 	local st = Prop.State[propertyId]
 	if not def or not st then return false, "invalid" end
+	if not def.ownable then return false, "reserved" end
 	if not Prop.IsOwner(ply, propertyId) then return false, "not_owner" end
 
 	local refund = math_floor((def.price or 0) * 0.5)
@@ -202,17 +234,34 @@ function Prop.Sell(ply, propertyId)
 	return true, refund
 end
 
--- Block non-owners from using locked doors
+-- Door use policy
 hook.Add("PlayerUse", "MintyRP_PropertyDoorUse", function(ply, ent)
 	local id, def, st = Prop.GetByDoor(ent)
-	if not id or not st then return end
+	if not id or not st or not def then return end
+
+	local policy = def.doorPolicy or "owner"
+
+	if policy == "public" then
+		return -- always allow
+	end
+
 	if not st.locked then return end
+
+	if policy == "secure" then
+		-- Job whitelist later; city/franchise secure areas blocked for now
+		if (ply.MintyRP._doorNotify or 0) < CurTime() then
+			ply.MintyRP._doorNotify = CurTime() + 1.5
+			MintyRP.Util.Notify(ply, "Restricted — " .. def.name .. ".", 2)
+		end
+		return false
+	end
+
+	-- owner policy
 	if Prop.IsOwner(ply, id) then return end
 
-	-- Government doors later; for now deny
 	if (ply.MintyRP._doorNotify or 0) < CurTime() then
 		ply.MintyRP._doorNotify = CurTime() + 1.5
-		MintyRP.Util.Notify(ply, "Locked — " .. (def and def.name or "property") .. ".", 2)
+		MintyRP.Util.Notify(ply, "Locked — " .. def.name .. ".", 2)
 	end
 	return false
 end)
@@ -238,6 +287,7 @@ net.Receive("MintyRP_PropertyAction", function(len, ply)
 				owned = "Already owned.",
 				money = "Not enough cash.",
 				invalid = "Invalid property.",
+				reserved = "City / franchise property — not for sale.",
 			})[err] or "Purchase failed."
 			MintyRP.Util.Notify(ply, msg, 3)
 		end
@@ -294,6 +344,30 @@ concommand.Add("mintyrp_propscan", function(ply)
 	Prop.ScanDoors()
 	if IsValid(ply) then
 		MintyRP.Util.Notify(ply, "Property doors rescanned.", 0)
+	end
+end)
+
+concommand.Add("mintyrp_propstats", function(ply)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	local missing = {}
+	local ok = 0
+	for id, def in pairs(Prop.List) do
+		local n = Prop.State[id] and #Prop.State[id].doors or 0
+		if n > 0 then
+			ok = ok + 1
+		else
+			missing[#missing + 1] = string.format("%s (%s)", id, def.ownable and "buyable" or def.ownerType)
+		end
+	end
+	print(string.format("[MintyRP] Properties with doors: %d / %d", ok, table.Count(Prop.List)))
+	if #missing > 0 then
+		print("[MintyRP] No doors linked (tune center/radius):")
+		for i = 1, #missing do
+			print("  - " .. missing[i])
+		end
+	end
+	if IsValid(ply) then
+		MintyRP.Util.Notify(ply, ok .. "/" .. table.Count(Prop.List) .. " properties have doors. See console.", 0)
 	end
 end)
 
