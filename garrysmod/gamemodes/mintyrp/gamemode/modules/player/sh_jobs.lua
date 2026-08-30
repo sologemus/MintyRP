@@ -1,8 +1,9 @@
 --[[-------------------------------------------------------------------------
-	MintyRP — Basic job / faction stubs (not DarkRP jobs)
+	MintyRP — Faction / duty job stubs (not DarkRP jobs)
 	Realm: SHARED
 
-	Serious RP roles for Rockford — expand with duty systems later.
+	Civilian paycheck jobs live in modules/economy (F2 → Work).
+	These stubs are for future PD / medic / FD duty systems.
 ---------------------------------------------------------------------------]]
 
 MintyRP.Jobs = MintyRP.Jobs or {}

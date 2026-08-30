@@ -22,6 +22,9 @@ function ENT:Initialize()
 	end
 
 	self:SetNWString("MintyRP_NPCName", "Bank Teller")
+	self:SetNWBool("MintyRP_Beacon", true)
+	-- Slight tint so they stand out against map props
+	self:SetColor(Color(210, 255, 230))
 	print("[MintyRP] Bank teller entity initialized")
 end
 

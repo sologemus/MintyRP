@@ -1,9 +1,6 @@
 --[[-------------------------------------------------------------------------
-	MintyRP — Inventory client UI skeleton (Perpheads-style dual pane)
+	MintyRP — Inventory client UI (items + Work tab)
 	Realm: CLIENT
-
-	F2 opens inventory. Full drag/drop storage UI lands in a later pass;
-	this provides category list + weight bar + use/drop actions.
 ---------------------------------------------------------------------------]]
 
 if not CLIENT then return end
@@ -43,8 +40,8 @@ net.Receive("MintyRP_InventorySync", function()
 		ply.MintyRP.inventory = items
 	end
 
-	if IsValid(frame) then
-		INV.RebuildList()
+	if IsValid(frame) and frame.RebuildItems then
+		frame.RebuildItems()
 	end
 end)
 
@@ -62,33 +59,67 @@ local function sendAction(action, itemId, amount)
 	net.SendToServer()
 end
 
-function INV.RebuildList()
-	if not IsValid(frame) or not IsValid(frame.List) then return end
+local function BuildWorkPanel(parent)
+	local panel = vgui.Create("DPanel", parent)
+	panel:Dock(FILL)
+	panel.Paint = function() end
 
-	frame.List:Clear()
-	frame.WeightLabel:SetText(string.format("Weight: %.1f / %.1f", INV.ClientWeight, INV.ClientMaxWeight))
+	local header = vgui.Create("DLabel", panel)
+	header:Dock(TOP)
+	header:DockMargin(8, 8, 8, 4)
+	header:SetTall(24)
+	header:SetText("Clock in for a higher paycheck (paid to bank every 5 min)")
 
-	-- Sort by category order then name (Perpheads-style)
-	local sorted = table.Copy(INV.ClientItems)
-	table.sort(sorted, function(a, b)
-		local da = INV.GetItem(a.item_id)
-		local db = INV.GetItem(b.item_id)
-		local ca = (da and INV.Categories[da.category] and INV.Categories[da.category].order) or 99
-		local cb = (db and INV.Categories[db.category] and INV.Categories[db.category].order) or 99
-		if ca ~= cb then return ca < cb end
-		local na = (da and da.name) or a.item_id
-		local nb = (db and db.name) or b.item_id
-		return na < nb
-	end)
+	local current = vgui.Create("DLabel", panel)
+	current:Dock(TOP)
+	current:DockMargin(8, 0, 8, 8)
+	current:SetTall(20)
+	current:SetText("Current job: …")
 
-	for i = 1, #sorted do
-		local slot = sorted[i]
-		local def = INV.GetItem(slot.item_id)
-		local label = string.format("%s  x%d", (def and def.name) or slot.item_id, slot.amount)
-		local line = frame.List:AddLine(label, (def and def.category) or "misc")
-		line.ItemId = slot.item_id
-		line.Amount = slot.amount
+	local list = vgui.Create("DListView", panel)
+	list:Dock(FILL)
+	list:DockMargin(8, 0, 8, 8)
+	list:AddColumn("Job")
+	list:AddColumn("Pay / check"):SetFixedWidth(100)
+	list:AddColumn("Description")
+	list:SetMultiSelect(false)
+
+	local order = { "unemployed", "labourer", "courier", "mechanic" }
+	local jobs = (MintyRP.Economy and MintyRP.Economy.Jobs) or {}
+
+	local function refresh()
+		list:Clear()
+		local my = (MintyRP.Economy and MintyRP.Economy.MyJob) or "unemployed"
+		local mine = jobs[my]
+		current:SetText("Current job: " .. ((mine and mine.name) or my))
+
+		for i = 1, #order do
+			local j = jobs[order[i]]
+			if j then
+				local line = list:AddLine(j.name, "$" .. string.Comma(j.paycheck), j.desc or "")
+				line.JobId = j.id
+			end
+		end
 	end
+
+	local btn = vgui.Create("DButton", panel)
+	btn:Dock(BOTTOM)
+	btn:DockMargin(8, 0, 8, 8)
+	btn:SetTall(32)
+	btn:SetText("Clock In")
+	btn.DoClick = function()
+		local idx = list:GetSelectedLine()
+		if not idx then return end
+		local row = list:GetLine(idx)
+		if row and row.JobId and MintyRP.Economy and MintyRP.Economy.RequestJob then
+			MintyRP.Economy.RequestJob(row.JobId)
+			timer.Simple(0.4, refresh)
+		end
+	end
+
+	panel.RefreshWork = refresh
+	refresh()
+	return panel
 end
 
 function INV.Open()
@@ -99,58 +130,101 @@ function INV.Open()
 	end
 
 	frame = vgui.Create("DFrame")
-	frame:SetSize(520, 420)
+	frame:SetSize(560, 440)
 	frame:Center()
 	frame:SetTitle("Inventory")
 	frame:MakePopup()
 	frame:SetKeyboardInputEnabled(false)
 
-	frame.WeightLabel = vgui.Create("DLabel", frame)
-	frame.WeightLabel:SetPos(12, 30)
-	frame.WeightLabel:SetSize(480, 20)
-	frame.WeightLabel:SetText("Weight: 0 / 0")
+	local sheet = vgui.Create("DPropertySheet", frame)
+	sheet:Dock(FILL)
+	sheet:DockMargin(4, 4, 4, 4)
 
-	frame.List = vgui.Create("DListView", frame)
-	frame.List:SetPos(12, 55)
-	frame.List:SetSize(496, 300)
-	frame.List:AddColumn("Item")
-	frame.List:AddColumn("Category"):SetFixedWidth(100)
-	frame.List:SetMultiSelect(false)
+	-- Items tab
+	local itemsPanel = vgui.Create("DPanel", sheet)
+	itemsPanel.Paint = function() end
 
-	local btnUse = vgui.Create("DButton", frame)
-	btnUse:SetPos(12, 365)
+	local weightLabel = vgui.Create("DLabel", itemsPanel)
+	weightLabel:SetPos(12, 8)
+	weightLabel:SetSize(480, 20)
+	weightLabel:SetText("Weight: 0 / 0")
+
+	local list = vgui.Create("DListView", itemsPanel)
+	list:SetPos(12, 32)
+	list:SetSize(516, 300)
+	list:AddColumn("Item")
+	list:AddColumn("Category"):SetFixedWidth(100)
+	list:SetMultiSelect(false)
+
+	local btnUse = vgui.Create("DButton", itemsPanel)
+	btnUse:SetPos(12, 342)
 	btnUse:SetSize(100, 28)
 	btnUse:SetText("Use")
 	btnUse.DoClick = function()
-		local line = frame.List:GetSelectedLine()
+		local line = list:GetSelectedLine()
 		if not line then return end
-		local row = frame.List:GetLine(line)
+		local row = list:GetLine(line)
 		if row and row.ItemId then
 			sendAction(ACTION_USE, row.ItemId, 1)
 		end
 	end
 
-	local btnDrop = vgui.Create("DButton", frame)
-	btnDrop:SetPos(122, 365)
+	local btnDrop = vgui.Create("DButton", itemsPanel)
+	btnDrop:SetPos(122, 342)
 	btnDrop:SetSize(100, 28)
 	btnDrop:SetText("Drop 1")
 	btnDrop.DoClick = function()
-		local line = frame.List:GetSelectedLine()
+		local line = list:GetSelectedLine()
 		if not line then return end
-		local row = frame.List:GetLine(line)
+		local row = list:GetLine(line)
 		if row and row.ItemId then
 			sendAction(ACTION_DROP, row.ItemId, 1)
 		end
 	end
 
-	local hint = vgui.Create("DLabel", frame)
-	hint:SetPos(240, 368)
-	hint:SetSize(260, 24)
-	hint:SetText("F2 toggle  ·  Storage UI coming soon")
+	local hint = vgui.Create("DLabel", itemsPanel)
+	hint:SetPos(240, 346)
+	hint:SetSize(280, 24)
+	hint:SetText("F2 toggle  ·  Work tab for paychecks")
 
-	INV.RebuildList()
+	frame.List = list
+	frame.WeightLabel = weightLabel
+
+	frame.RebuildItems = function()
+		if not IsValid(list) then return end
+		list:Clear()
+		weightLabel:SetText(string.format("Weight: %.1f / %.1f", INV.ClientWeight, INV.ClientMaxWeight))
+
+		local sorted = table.Copy(INV.ClientItems)
+		table.sort(sorted, function(a, b)
+			local da = INV.GetItem(a.item_id)
+			local db = INV.GetItem(b.item_id)
+			local ca = (da and INV.Categories[da.category] and INV.Categories[da.category].order) or 99
+			local cb = (db and INV.Categories[db.category] and INV.Categories[db.category].order) or 99
+			if ca ~= cb then return ca < cb end
+			local na = (da and da.name) or a.item_id
+			local nb = (db and db.name) or b.item_id
+			return na < nb
+		end)
+
+		for i = 1, #sorted do
+			local slot = sorted[i]
+			local def = INV.GetItem(slot.item_id)
+			local label = string.format("%s  x%d", (def and def.name) or slot.item_id, slot.amount)
+			local line = list:AddLine(label, (def and def.category) or "misc")
+			line.ItemId = slot.item_id
+			line.Amount = slot.amount
+		end
+	end
+
+	INV.RebuildList = frame.RebuildItems
+
+	sheet:AddSheet("Items", itemsPanel, "icon16/box.png")
+
+	local workPanel = BuildWorkPanel(sheet)
+	sheet:AddSheet("Work", workPanel, "icon16/money.png")
+
+	frame.RebuildItems()
 end
-
--- Key binds handled in core/cl_binds.lua (F2 / mintyrp_inventory)
 
 print("[MintyRP] Inventory client loaded")

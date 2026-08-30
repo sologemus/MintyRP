@@ -21,7 +21,7 @@ local string_format = string.format
 local type = type
 local pairs = pairs
 
-local SCHEMA_VERSION = 5
+local SCHEMA_VERSION = 6
 
 local function sid(steamid64)
 	if steamid64 == nil then return nil end
@@ -120,6 +120,9 @@ function DB.EnsureSchema()
 				money INTEGER NOT NULL DEFAULT 500,
 				bank INTEGER NOT NULL DEFAULT 0,
 				data TEXT NOT NULL DEFAULT '{}',
+				tutorial_done INTEGER NOT NULL DEFAULT 0,
+				job TEXT NOT NULL DEFAULT 'unemployed',
+				last_paycheck INTEGER NOT NULL DEFAULT 0,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL,
 				UNIQUE(steamid64, slot)
@@ -163,6 +166,22 @@ function DB.EnsureSchema()
 				updated_at INTEGER NOT NULL
 			);
 		]])
+	end
+
+	-- Schema v6: tutorial + economy columns (ALTER is safe / additive)
+	if hasColumn("mintyrp_characters", "steamid64") then
+		if not hasColumn("mintyrp_characters", "tutorial_done") then
+			sql_Query("ALTER TABLE mintyrp_characters ADD COLUMN tutorial_done INTEGER NOT NULL DEFAULT 0")
+			print("[MintyRP] Added mintyrp_characters.tutorial_done")
+		end
+		if not hasColumn("mintyrp_characters", "job") then
+			sql_Query("ALTER TABLE mintyrp_characters ADD COLUMN job TEXT NOT NULL DEFAULT 'unemployed'")
+			print("[MintyRP] Added mintyrp_characters.job")
+		end
+		if not hasColumn("mintyrp_characters", "last_paycheck") then
+			sql_Query("ALTER TABLE mintyrp_characters ADD COLUMN last_paycheck INTEGER NOT NULL DEFAULT 0")
+			print("[MintyRP] Added mintyrp_characters.last_paycheck")
+		end
 	end
 
 	-- Verify critical column after repair
