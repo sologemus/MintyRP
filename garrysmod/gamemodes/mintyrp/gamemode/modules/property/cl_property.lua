@@ -76,6 +76,12 @@ hook.Add("HUDPaint", "MintyRP_PropertyDoorHint", function()
 			"DermaDefault",
 			x, y + 18, colText, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
 		)
+	elseif not def.ownable then
+		draw.SimpleText(
+			Prop.GetOwnerLabel(def),
+			"DermaDefault",
+			x, y + 18, Color(220, 160, 90), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
+		)
 	else
 		local price = MintyRP.Util and MintyRP.Util.FormatMoney(def.price) or ("$" .. def.price)
 		draw.SimpleText(
@@ -165,19 +171,32 @@ function Prop.OpenMenu()
 	end
 	sheet:AddSheet("Owned", ownedPanel, "icon16/key.png")
 
-	-- Catalog by district
+	-- Catalog: For Sale + Reserved
 	local catalog = vgui.Create("DScrollPanel", sheet)
 	local sorted = Prop.GetSorted and Prop.GetSorted() or {}
 	local lastDistrict = ""
+	local section = ""
 	for i = 1, #sorted do
 		local def = sorted[i]
+		local sec = def.ownable and "FOR SALE" or "CITY / FRANCHISE"
+		if sec ~= section then
+			section = sec
+			lastDistrict = ""
+			local sh = catalog:Add("DLabel")
+			sh:Dock(TOP)
+			sh:SetTall(26)
+			sh:DockMargin(0, 10, 0, 2)
+			sh:SetTextColor(colMint)
+			sh:SetFont("DermaLarge")
+			sh:SetText(section)
+		end
 		if def.district ~= lastDistrict then
 			lastDistrict = def.district
 			local header = catalog:Add("DLabel")
 			header:Dock(TOP)
-			header:SetTall(28)
-			header:DockMargin(0, 8, 0, 4)
-			header:SetTextColor(colMint)
+			header:SetTall(22)
+			header:DockMargin(0, 6, 0, 2)
+			header:SetTextColor(colDim)
 			header:SetFont("DermaDefaultBold")
 			header:SetText(string.upper(lastDistrict or "other"))
 		end
@@ -185,13 +204,21 @@ function Prop.OpenMenu()
 		local owned = Prop.Owned[def.id] ~= nil
 		local row = catalog:Add("DPanel")
 		row:Dock(TOP)
-		row:SetTall(36)
-		row:DockMargin(0, 0, 0, 4)
+		row:SetTall(34)
+		row:DockMargin(0, 0, 0, 3)
 		row.Paint = function(_, w, h)
 			draw.RoundedBox(3, 0, 0, w, h, Color(22, 32, 28))
 			draw.SimpleText(def.name, "DermaDefault", 10, h * 0.5, colText, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-			local right = owned and "OWNED" or (MintyRP.Util and MintyRP.Util.FormatMoney(def.price) or ("$" .. def.price))
-			draw.SimpleText(right, "DermaDefault", w - 10, h * 0.5, owned and colMint or colDim, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+			local right
+			if owned then
+				right = "OWNED"
+			elseif not def.ownable then
+				right = def.ownerType == "franchise" and "FRANCHISE" or "CITY"
+			else
+				right = MintyRP.Util and MintyRP.Util.FormatMoney(def.price) or ("$" .. def.price)
+			end
+			local rc = owned and colMint or (def.ownable and colDim or Color(220, 160, 90))
+			draw.SimpleText(right, "DermaDefault", w - 10, h * 0.5, rc, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 		end
 	end
 	sheet:AddSheet("Catalog", catalog, "icon16/house.png")
@@ -206,12 +233,16 @@ hook.Add("PlayerButtonDown", "MintyRP_PropertyKeys", function(ply, button)
 		return
 	end
 
-	-- N = buy (B is GMod zoom — do not use)
 	if button == KEY_N then
 		local door = tracedDoor()
 		if not door then return end
 		local id = door:GetNWString("MintyRP_Property", "")
 		if id == "" or Prop.Owned[id] ~= nil then return end
+		local def = Prop.Get(id)
+		if def and not def.ownable then
+			notification.AddLegacy(Prop.GetOwnerLabel(def), NOTIFY_ERROR, 3)
+			return
+		end
 		sendAction(1, id)
 	end
 end)
