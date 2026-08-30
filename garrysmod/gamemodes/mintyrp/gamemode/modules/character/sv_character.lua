@@ -132,6 +132,7 @@ function Char.ApplyToPlayer(ply, charRow)
 
 	MintyRP.Util.Notify(ply, "Welcome, " .. charRow.name .. ".", 0)
 	print(string.format("[MintyRP] %s playing as %s (char #%d)", ply:Nick(), charRow.name, charRow.id))
+	hook.Run("MintyRP_CharacterApplied", ply, charRow)
 end
 
 local function finishEnter(ply, isNew)
