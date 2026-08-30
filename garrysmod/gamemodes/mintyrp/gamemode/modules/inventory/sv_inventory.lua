@@ -14,8 +14,6 @@ local INV = MintyRP.Inventory
 local IsValid = IsValid
 local math_floor = math.floor
 local math_min = math.min
-local math_max = math.max
-local util_TableToJSON = util.TableToJSON
 
 local ACTION_MOVE   = 1 -- personal ↔ storage (storage stub)
 local ACTION_DROP   = 2
