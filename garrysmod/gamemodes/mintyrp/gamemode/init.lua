@@ -11,6 +11,10 @@ util.AddNetworkString("MintyRP_Notify")
 util.AddNetworkString("MintyRP_InventorySync")
 util.AddNetworkString("MintyRP_InventoryAction")
 util.AddNetworkString("MintyRP_CharacterReady")
+util.AddNetworkString("MintyRP_CharacterList")
+util.AddNetworkString("MintyRP_OpenCharacterMenu")
+util.AddNetworkString("MintyRP_CharacterSelect")
+util.AddNetworkString("MintyRP_CharacterCreate")
 
 include("shared.lua")
 
@@ -84,10 +88,23 @@ end
 function GM:PlayerLoadout(ply)
 	ply:StripWeapons()
 	ply:StripAmmo()
+
+	-- No toys until a character is selected
+	if not ply.MintyRP or not ply.MintyRP.Loaded or ply.MintyRP.InCharacterMenu then
+		return true
+	end
+
 	ply:Give("weapon_physcannon")
 	ply:Give("weapon_physgun")
 	ply:Give("gmod_tool")
 	ply:Give("weapon_fists")
+	return true
+end
+
+function GM:CanPlayerSuicide(ply)
+	if ply.MintyRP and (ply.MintyRP.InCharacterMenu or not ply.MintyRP.Loaded) then
+		return false
+	end
 	return true
 end
 

@@ -53,6 +53,26 @@ mintyrp/
       player/           Job stubs
 ```
 
+## How to smoke-test
+
+Yes — test this before stacking more systems. Fastest path is a **listen server** on your own PC:
+
+1. Copy `garrysmod/gamemodes/mintyrp` into your local `GarrysMod/garrysmod/gamemodes/`.
+2. Subscribe to [RP Rockford v2](https://steamcommunity.com/sharedfiles/filedetails/?id=622810630) (+ content / CS:S).
+3. Main menu → **Create Multiplayer** → map `rp_rockford_v2b` → gamemode **MintyRP** → Start.
+4. Confirm checklist:
+   - [ ] Console shows `[MintyRP] Autoload complete` and `SQLite database ready`
+   - [ ] Gamemode logo appears in the mode picker (`logo.png`)
+   - [ ] Character menu opens on join; create `First Last` + pick a model
+   - [ ] You spawn, HUD shows RP name + money
+   - [ ] **F2** opens inventory with starter items (water, sandwich, phone)
+   - [ ] Reconnect → character list shows your slot; select works
+   - [ ] `mintyrp_dumppos` (superadmin) prints a Vector
+
+Optional loading screen: host `loading/` on HTTPS, set `sv_loadingurl` from `cfg/server.cfg.example`, join a dedicated server once.
+
+If something fails, copy the **red console errors** from client + server — that’s enough to fix the next pass.
+
 ## What's next (to reach Perpheads-like depth)
 
 Priority systems still needed beyond this foundation:

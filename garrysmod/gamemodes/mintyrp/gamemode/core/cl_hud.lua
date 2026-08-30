@@ -16,30 +16,21 @@ local TEXT_ALIGN_BOTTOM = TEXT_ALIGN_BOTTOM
 
 local colText = Color(235, 235, 230)
 local colDim = Color(180, 180, 175)
-local money = 0
-local bank = 0
 
-net.Receive("MintyRP_CharacterReady", function()
-	money = net.ReadUInt(32)
-	bank = net.ReadUInt(32)
+-- CharacterReady is handled in modules/character/cl_character.lua (includes RP name)
 
-	local ply = LocalPlayer()
-	if IsValid(ply) then
-		ply.MintyRP = ply.MintyRP or {}
-		ply.MintyRP.money = money
-		ply.MintyRP.bank = bank
-		ply.MintyRP.Loaded = true
-	end
-end)
-
--- Update cached money when inventory sync also carries economy (future)
 hook.Add("HUDPaint", "MintyRP_CoreHUD", function()
 	local ply = LocalPlayer()
 	if not IsValid(ply) or not ply:Alive() then return end
 	if not ply.MintyRP or not ply.MintyRP.Loaded then return end
 
-	local w, h = ScrW(), ScrH()
-	local cash = ply.MintyRP.money or money
+	local h = ScrH()
+	local cash = ply.MintyRP.money or 0
+	local rpName = ply.MintyRP.rpName or ply:GetNWString("MintyRP_RPName", "")
+
+	if rpName ~= "" then
+		draw_SimpleText(rpName, "DermaDefaultBold", 24, h - 68, colDim, TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+	end
 
 	draw_SimpleText(
 		MintyRP.Util and MintyRP.Util.FormatMoney(cash) or ("$" .. cash),

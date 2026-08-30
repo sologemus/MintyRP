@@ -222,36 +222,11 @@ net.Receive("MintyRP_InventoryAction", function(len, ply)
 	end
 end)
 
--- Starter kit for brand-new characters (no inventory rows)
+-- Starter kit for brand-new characters (granted from character module)
 hook.Add("MintyRP_PlayerFirstJoin", "MintyRP_StarterItems", function(ply)
 	INV.Give(ply, "water_bottle", 1)
 	INV.Give(ply, "sandwich", 1)
 	INV.Give(ply, "phone", 1)
-end)
-
--- Detect first join after load
-local oldLoad = MintyRP.Player and MintyRP.Player.Load
-if oldLoad then
-	-- Fired from player module via empty inventory + new flag; also check in Load hook
-end
-
-hook.Add("PlayerInitialSpawn", "MintyRP_InventorySpawnHook", function(ply)
-	-- Actual give happens after DB load; see timer in player load path
-end)
-
--- After character ready: grant starter if inventory empty and brand new
-hook.Add("PlayerSpawn", "MintyRP_CheckStarterKit", function(ply)
-	if not IsValid(ply) or ply:IsBot() then return end
-	timer.Simple(1, function()
-		if not IsValid(ply) or not ply.MintyRP or not ply.MintyRP.Loaded then return end
-		if ply.MintyRP._starterChecked then return end
-		ply.MintyRP._starterChecked = true
-
-		local inv = ply.MintyRP.inventory
-		if type(inv) == "table" and #inv == 0 then
-			hook.Run("MintyRP_PlayerFirstJoin", ply)
-		end
-	end)
 end)
 
 print("[MintyRP] Inventory server loaded")
