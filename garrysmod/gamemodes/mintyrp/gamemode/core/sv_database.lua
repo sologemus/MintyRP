@@ -21,7 +21,7 @@ local string_format = string.format
 local type = type
 local pairs = pairs
 
-local SCHEMA_VERSION = 3
+local SCHEMA_VERSION = 4
 
 local function sid(steamid64)
 	if steamid64 == nil then return nil end
@@ -88,23 +88,30 @@ function DB.EnsureSchema()
 			);
 		]])
 	elseif hasColumn("mintyrp_players", "money") and not hasColumn("mintyrp_players", "last_character_id") then
-		-- v1 account table still present; Migrate() will rebuild
 		print("[MintyRP] Detected v1 players table — will migrate")
 	end
 
-	-- Characters
+	-- Characters: if the table exists with the WRONG columns, CREATE IF NOT EXISTS
+	-- does nothing — we must DROP first. (This was the "no column named steamid64" bug.)
 	local charCols = tableColumns("mintyrp_characters")
 	local charsOk = charCols.id and charCols.steamid64 and charCols.slot
 		and charCols.name and charCols.model and charCols.money
 		and charCols.bank and charCols.data
 
 	if not charsOk then
-		if charCols.steamid64 then
-			print("[MintyRP] Rebuilding mintyrp_characters (schema mismatch)")
+		local hadTable = next(charCols) ~= nil
+		if hadTable then
+			print("[MintyRP] Rebuilding mintyrp_characters (bad/missing columns). Had: "
+				.. table.concat((function()
+					local n = {}
+					for k in pairs(charCols) do n[#n + 1] = k end
+					table.sort(n)
+					return n
+				end)(), ", "))
 			sql_Query("DROP TABLE IF EXISTS mintyrp_characters")
 		end
 		sql_Query([[
-			CREATE TABLE IF NOT EXISTS mintyrp_characters (
+			CREATE TABLE mintyrp_characters (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				steamid64 TEXT NOT NULL,
 				slot INTEGER NOT NULL,
@@ -126,12 +133,12 @@ function DB.EnsureSchema()
 	local invCols = tableColumns("mintyrp_inventory")
 	local invOk = invCols.character_id and invCols.item_id and invCols.amount and not invCols.steamid64
 	if not invOk then
-		if invCols.steamid64 or invCols.id then
+		if next(invCols) ~= nil then
 			print("[MintyRP] Rebuilding mintyrp_inventory for character_id schema")
 			sql_Query("DROP TABLE IF EXISTS mintyrp_inventory")
 		end
 		sql_Query([[
-			CREATE TABLE IF NOT EXISTS mintyrp_inventory (
+			CREATE TABLE mintyrp_inventory (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				character_id INTEGER NOT NULL,
 				slot INTEGER NOT NULL,
@@ -144,6 +151,11 @@ function DB.EnsureSchema()
 	end
 
 	sql_Query("CREATE INDEX IF NOT EXISTS idx_inv_character ON mintyrp_inventory(character_id)")
+
+	-- Verify critical column after repair
+	if not hasColumn("mintyrp_characters", "steamid64") then
+		print("[MintyRP] FATAL: mintyrp_characters still missing steamid64 after EnsureSchema")
+	end
 end
 
 function DB.Migrate()
@@ -373,6 +385,13 @@ function DB.CreateCharacter(steamid64, name, model, appearance)
 	local dataJson = encodeAppearance(appearance)
 
 	clearSqlErr()
+
+	-- Hard guarantee before INSERT (covers leftover bad tables)
+	if not hasColumn("mintyrp_characters", "steamid64") then
+		print("[MintyRP] mintyrp_characters missing steamid64 — forcing rebuild")
+		sql_Query("DROP TABLE IF EXISTS mintyrp_characters")
+		DB.EnsureSchema()
+	end
 
 	local q = string_format(
 		"INSERT INTO mintyrp_characters (steamid64, slot, name, model, money, bank, data, created_at, updated_at) VALUES (%s, %d, %s, %s, %d, %d, %s, %d, %d)",
