@@ -21,7 +21,7 @@ local string_format = string.format
 local type = type
 local pairs = pairs
 
-local SCHEMA_VERSION = 4
+local SCHEMA_VERSION = 5
 
 local function sid(steamid64)
 	if steamid64 == nil then return nil end
@@ -151,6 +151,19 @@ function DB.EnsureSchema()
 	end
 
 	sql_Query("CREATE INDEX IF NOT EXISTS idx_inv_character ON mintyrp_inventory(character_id)")
+
+	-- Properties ownership
+	if not hasColumn("mintyrp_properties", "property_id") then
+		sql_Query([[
+			CREATE TABLE mintyrp_properties (
+				property_id TEXT PRIMARY KEY,
+				owner_character_id INTEGER,
+				locked INTEGER NOT NULL DEFAULT 1,
+				data TEXT NOT NULL DEFAULT '{}',
+				updated_at INTEGER NOT NULL
+			);
+		]])
+	end
 
 	-- Verify critical column after repair
 	if not hasColumn("mintyrp_characters", "steamid64") then
@@ -529,12 +542,63 @@ function DB.SaveInventory(characterId, items)
 	return true
 end
 
+function DB.GetProperty(propertyId)
+	if not propertyId or propertyId == "" then return nil end
+	local rows = sql_Query("SELECT * FROM mintyrp_properties WHERE property_id = " .. sql_SQLStr(tostring(propertyId)))
+	if type(rows) ~= "table" or not rows[1] then return nil end
+	return rows[1]
+end
+
+function DB.SetPropertyOwner(propertyId, ownerCharacterId, locked)
+	if not propertyId or propertyId == "" then return false end
+	local now = os.time()
+	local ownerSql = ownerCharacterId and tostring(tonumber(ownerCharacterId)) or "NULL"
+	local lockVal = locked and 1 or 0
+
+	local exists = sql_QueryValue("SELECT property_id FROM mintyrp_properties WHERE property_id = " .. sql_SQLStr(tostring(propertyId)))
+	if exists then
+		local result = sql_Query(string_format(
+			"UPDATE mintyrp_properties SET owner_character_id = %s, locked = %d, updated_at = %d WHERE property_id = %s",
+			ownerSql,
+			lockVal,
+			now,
+			sql_SQLStr(tostring(propertyId))
+		))
+		return result ~= false
+	end
+
+	local result = sql_Query(string_format(
+		"INSERT INTO mintyrp_properties (property_id, owner_character_id, locked, data, updated_at) VALUES (%s, %s, %d, '{}', %d)",
+		sql_SQLStr(tostring(propertyId)),
+		ownerSql,
+		lockVal,
+		now
+	))
+	return result ~= false
+end
+
+function DB.SetPropertyLock(propertyId, locked)
+	if not propertyId or propertyId == "" then return false end
+	local exists = sql_QueryValue("SELECT property_id FROM mintyrp_properties WHERE property_id = " .. sql_SQLStr(tostring(propertyId)))
+	if not exists then
+		return DB.SetPropertyOwner(propertyId, nil, locked)
+	end
+	local result = sql_Query(string_format(
+		"UPDATE mintyrp_properties SET locked = %d, updated_at = %d WHERE property_id = %s",
+		locked and 1 or 0,
+		os.time(),
+		sql_SQLStr(tostring(propertyId))
+	))
+	return result ~= false
+end
+
 --- Superadmin: wipe MintyRP tables (keeps sv.db otherwise)
 function DB.ResetAll()
 	sql_Query("DROP TABLE IF EXISTS mintyrp_inventory")
 	sql_Query("DROP TABLE IF EXISTS mintyrp_characters")
 	sql_Query("DROP TABLE IF EXISTS mintyrp_players")
 	sql_Query("DROP TABLE IF EXISTS mintyrp_players_v1")
+	sql_Query("DROP TABLE IF EXISTS mintyrp_properties")
 	sql_Query("DELETE FROM mintyrp_meta WHERE key = 'schema_version'")
 	DB._ready = false
 	DB.Initialize()

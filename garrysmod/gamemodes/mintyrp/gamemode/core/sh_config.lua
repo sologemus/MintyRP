@@ -10,7 +10,7 @@ local Config = MintyRP.Config
 Config.Map = "rp_rockford_v2b"
 Config.MapPrefix = "rp_rockford"
 
-Config.StartMoney = 500
+Config.StartMoney = 5000
 Config.StartBank = 0
 Config.MaxInventoryWeight = 50
 Config.MaxStackSize = 100

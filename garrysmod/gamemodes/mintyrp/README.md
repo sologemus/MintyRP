@@ -23,8 +23,10 @@ The main-menu / home-screen logo is `logo.png` (+ `icon24.png`) in the gamemode 
 | Key | Action |
 |-----|--------|
 | F2 | Toggle inventory |
+| F3 | Manage owned properties |
+| B | Buy property while looking at its door |
 
-Superadmins: `mintyrp_dumppos` prints your current Vector/Angle for updating location tables.
+Superadmins: `mintyrp_dumppos` prints position; `mintyrp_propscan` rescans doors; `mintyrp_dbreset` wipes MintyRP DB tables.
 
 ## Layout
 
@@ -80,7 +82,7 @@ If something fails, copy the **red console errors** from client + server — tha
 Priority systems still needed beyond this foundation:
 
 1. ~~**Character creation**~~ — name, model, 3 slots (done)
-2. **Property / doors** — ownable apartments & storefronts on Rockford; keys; eviction
+2. ~~**Property / doors**~~ — buy/lock apartments & shops (skeleton; tune Rockford door radii)
 3. **Storage boxes** — dual-pane inventory ↔ property storage (drag/drop, search, categories)
 4. **Economy** — ATM/bank, paychecks, shops/NPCs, crafting + workbench queue
 5. **Jobs & duty** — PD / EMS / fire whitelists, vehicles, cuff/drag/jail, medicals

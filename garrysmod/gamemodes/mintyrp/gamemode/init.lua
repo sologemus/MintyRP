@@ -15,6 +15,8 @@ util.AddNetworkString("MintyRP_CharacterList")
 util.AddNetworkString("MintyRP_OpenCharacterMenu")
 util.AddNetworkString("MintyRP_CharacterSelect")
 util.AddNetworkString("MintyRP_CharacterCreate")
+util.AddNetworkString("MintyRP_PropertyAction")
+util.AddNetworkString("MintyRP_PropertySync")
 
 include("shared.lua")
 
@@ -35,6 +37,10 @@ function GM:Initialize()
 
 	if MintyRP.Inventory and MintyRP.Inventory.Initialize then
 		MintyRP.Inventory.Initialize()
+	end
+
+	if MintyRP.Property and MintyRP.Property.Initialize then
+		MintyRP.Property.Initialize()
 	end
 
 	print("[MintyRP] Server ready — map target: rp_rockford_v2b")
