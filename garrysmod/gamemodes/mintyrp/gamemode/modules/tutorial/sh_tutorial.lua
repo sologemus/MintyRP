@@ -17,17 +17,17 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "bank",
 		title = "Bank tellers",
-		body = "Bank tellers are placed by the host (green beacon).\n\nPress E to deposit or withdraw.\nIf none exist yet, host: stand at the desk → mintyrp_setteller bank",
+		body = "Bank tellers are at the bank (green beacon).\nGas stations have ATMs (blue beacon) — same deposit/withdraw.\n\nPress E on either. Host places them:\nmintyrp_setteller bank   ·   mintyrp_setatm gas1",
 	},
 	{
 		id = "keys",
 		title = "Keys & doors",
-		body = "Walk up to any residential / shop door — you should see For sale + price.\n\nPress N to buy (uses cash first, then bank).\nKeys: left-click lock / right-click unlock owned doors.",
+		body = "Walk up to any housing door — HUD shows For sale + price.\nPress N to buy that door (cash or bank).\nEach door is its own property. Keys lock/unlock what you own.",
 	},
 	{
 		id = "menus",
 		title = "Menus",
-		body = "F2 — Inventory & Work\nF3 — Properties\nN — Buy the door you're looking at\n\nConsole: mintyrp_inventory / mintyrp_properties / mintyrp_buydoor",
+		body = "F2 opens your inventory (PERP-style grid).\nDrag items between slots. Short click to use. Right-click to drop.\nE on a crate opens dual-pane storage like PERP's bank vault.",
 	},
 	{
 		id = "work",

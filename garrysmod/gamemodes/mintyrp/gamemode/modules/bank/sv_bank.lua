@@ -1,17 +1,13 @@
 --[[-------------------------------------------------------------------------
-	MintyRP — Bank tellers (YOU place them)
+	MintyRP — Bank tellers + ATMs (manual placement)
 	Realm: SERVER
 
-	No more guessing map coords. Tellers only spawn from
-	data/mintyrp/teller_stations.json which you write with:
+	Tellers (NPC): bank lobby — mintyrp_setteller bank
+	ATMs (machine): gas stations / streets — mintyrp_setatm gas1
 
-	  mintyrp_setteller              — place at your feet
-	  mintyrp_setteller bank         — set/replace main bank desk
-	  mintyrp_setteller gas1 Name    — set/replace a gas desk
-	  mintyrp_removeteller           — remove nearest teller + save
-	  mintyrp_listtellers            — print saved stations
-	  mintyrp_cleartellers           — wipe all
-	  mintyrp_respawntellers         — respawn from saved file only
+	Saved separately:
+	  data/mintyrp/teller_stations.json
+	  data/mintyrp/atm_stations.json
 ---------------------------------------------------------------------------]]
 
 if not SERVER then return end
@@ -28,22 +24,27 @@ local util = util
 local MAX_BITS = 512
 local RATE = 0.35
 local MAX_TX = 10000000
-local DATA_FILE = "mintyrp/teller_stations.json"
+local TELLER_FILE = "mintyrp/teller_stations.json"
+local ATM_FILE = "mintyrp/atm_stations.json"
 
--- Named slots so you can replace without stacking duplicates
-local SLOT_ALIASES = {
+local TELLER_SLOTS = {
 	bank = { id = "bank_main", name = "Rockford Bank" },
 	bank_main = { id = "bank_main", name = "Rockford Bank" },
 	spawn = { id = "spawn_kiosk", name = "City Spawn Kiosk" },
 	spawn_kiosk = { id = "spawn_kiosk", name = "City Spawn Kiosk" },
 	kiosk = { id = "spawn_kiosk", name = "City Spawn Kiosk" },
-	gas = { id = "gas_1", name = "Gas Station Desk" },
-	gas1 = { id = "gas_1", name = "Gas Station Desk 1" },
-	gas2 = { id = "gas_2", name = "Gas Station Desk 2" },
-	gas3 = { id = "gas_3", name = "Gas Station Desk 3" },
-	gas_downtown = { id = "gas_1", name = "Downtown Gas Desk" },
-	gas_industrial = { id = "gas_2", name = "Industrial Gas Desk" },
-	gas_suburb = { id = "gas_3", name = "Suburban Gas Desk" },
+}
+
+local ATM_SLOTS = {
+	gas = { id = "atm_gas_1", name = "Gas Station ATM" },
+	gas1 = { id = "atm_gas_1", name = "Gas Station ATM 1" },
+	gas2 = { id = "atm_gas_2", name = "Gas Station ATM 2" },
+	gas3 = { id = "atm_gas_3", name = "Gas Station ATM 3" },
+	gas_downtown = { id = "atm_gas_1", name = "Downtown Gas ATM" },
+	gas_industrial = { id = "atm_gas_2", name = "Industrial Gas ATM" },
+	gas_suburb = { id = "atm_gas_3", name = "Suburban Gas ATM" },
+	street = { id = "atm_street", name = "Street ATM" },
+	atm = { id = "atm_1", name = "ATM" },
 }
 
 local function rateLimited(ply)
@@ -103,12 +104,16 @@ function Bank.Credit(ply, amount)
 	return true
 end
 
+--- Near a teller NPC or an ATM
 function Bank.IsNearTeller(ply, dist)
 	dist = dist or 220
 	local d2 = dist * dist
-	for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
-		if IsValid(ent) and ent:GetPos():DistToSqr(ply:GetPos()) <= d2 then
-			return true, ent
+	local pos = ply:GetPos()
+	for _, class in ipairs({ "mintyrp_bank_npc", "mintyrp_atm" }) do
+		for _, ent in ipairs(ents.FindByClass(class)) do
+			if IsValid(ent) and ent:GetPos():DistToSqr(pos) <= d2 then
+				return true, ent
+			end
 		end
 	end
 	return false
@@ -121,7 +126,7 @@ net.Receive("MintyRP_BankAction", function(len, ply)
 	if not ply.MintyRP or not ply.MintyRP.Loaded then return end
 
 	if not Bank.IsNearTeller(ply) then
-		MintyRP.Util.Notify(ply, "You need to be at a bank teller.", 2)
+		MintyRP.Util.Notify(ply, "You need to be at a bank teller or ATM.", 2)
 		return
 	end
 
@@ -159,8 +164,8 @@ local function toSaveTable(stations)
 				ang = { p = ang.p or 0, y = ang.y or ang.Yaw or 0, r = ang.r or 0 }
 			end
 			out[#out + 1] = {
-				id = s.id or ("teller_" .. i),
-				name = s.name or "Bank Teller",
+				id = s.id or ("station_" .. i),
+				name = s.name or "Station",
 				pos = { x = pos.x or 0, y = pos.y or 0, z = pos.z or 0 },
 				ang = { p = ang.p or 0, y = ang.y or 0, r = ang.r or 0 },
 			}
@@ -169,58 +174,68 @@ local function toSaveTable(stations)
 	return out
 end
 
-function Bank.SaveStations()
-	if not file.Exists("mintyrp", "DATA") then
-		file.CreateDir("mintyrp")
-	end
-	local payload = toSaveTable(Bank.Stations)
-	file.Write(DATA_FILE, util.TableToJSON(payload, true) or "[]")
-	print("[MintyRP] Saved " .. #payload .. " teller station(s) → data/" .. DATA_FILE)
+local function saveFile(path, stations)
+	if not file.Exists("mintyrp", "DATA") then file.CreateDir("mintyrp") end
+	local payload = toSaveTable(stations)
+	file.Write(path, util.TableToJSON(payload, true) or "[]")
+	return #payload
+end
+
+local function loadFile(path)
+	if not file.Exists(path, "DATA") then return {} end
+	local decoded = util.JSONToTable(file.Read(path, "DATA") or "")
+	if type(decoded) ~= "table" then return {} end
+	return decoded
 end
 
 function Bank.LoadStations()
-	if not file.Exists("mintyrp", "DATA") then
-		file.CreateDir("mintyrp")
+	Bank.Stations = loadFile(TELLER_FILE) -- tellers only
+	Bank.ATMStations = loadFile(ATM_FILE)
+
+	-- One-time migrate: old gas_* teller slots → ATM file
+	local migrated = false
+	local kept = {}
+	for i = 1, #Bank.Stations do
+		local s = Bank.Stations[i]
+		local id = tostring(s.id or "")
+		if string.StartWith(id, "gas_") or id == "gas_auto" then
+			s.id = "atm_" .. id
+			if not string.find(string.lower(s.name or ""), "atm", 1, true) then
+				s.name = (s.name or "Gas") .. " ATM"
+			end
+			Bank.ATMStations[#Bank.ATMStations + 1] = s
+			migrated = true
+		else
+			kept[#kept + 1] = s
+		end
+	end
+	if migrated then
+		Bank.Stations = kept
+		saveFile(TELLER_FILE, Bank.Stations)
+		saveFile(ATM_FILE, Bank.ATMStations)
+		print("[MintyRP] Migrated old gas tellers → ATM placements")
 	end
 
-	Bank.Stations = {}
-
-	if not file.Exists(DATA_FILE, "DATA") then
-		print("[MintyRP] No teller placements yet. Stand where you want one and run: mintyrp_setteller bank")
-		return Bank.Stations
-	end
-
-	local raw = file.Read(DATA_FILE, "DATA") or ""
-	local decoded = util.JSONToTable(raw)
-	if type(decoded) ~= "table" or #decoded == 0 then
-		print("[MintyRP] Teller file empty. Place with: mintyrp_setteller bank")
-		return Bank.Stations
-	end
-
-	Bank.Stations = decoded
-	print("[MintyRP] Loaded " .. #Bank.Stations .. " teller placement(s) from data/")
-	return Bank.Stations
+	print(string.format("[MintyRP] Loaded %d teller(s), %d ATM(s)", #Bank.Stations, #Bank.ATMStations))
 end
 
---- Exact feet position — do NOT snap/nudge (that was putting them wrong)
-local function spawnOne(station)
-	if not scripted_ents.GetStored("mintyrp_bank_npc") and not scripted_ents.Get("mintyrp_bank_npc") then
-		print("[MintyRP] ERROR: mintyrp_bank_npc not registered")
-		return nil
-	end
+function Bank.SaveStations()
+	saveFile(TELLER_FILE, Bank.Stations or {})
+end
 
+function Bank.SaveATMs()
+	saveFile(ATM_FILE, Bank.ATMStations or {})
+end
+
+local function spawnTeller(station)
 	local ent = ents.Create("mintyrp_bank_npc")
 	if not IsValid(ent) then return nil end
-
 	local pos = station.pos
-	if istable(pos) then
-		pos = Vector(pos.x or pos[1] or 0, pos.y or pos[2] or 0, pos.z or pos[3] or 0)
-	end
+	if istable(pos) then pos = Vector(pos.x or 0, pos.y or 0, pos.z or 0) end
 	local ang = station.ang or Angle(0, 0, 0)
 	if istable(ang) and not ang.Yaw then
-		ang = Angle(ang.p or ang[1] or 0, ang.y or ang[2] or 0, ang.r or ang[3] or 0)
+		ang = Angle(ang.p or 0, ang.y or 0, ang.r or 0)
 	end
-
 	ent:SetPos(pos)
 	ent:SetAngles(ang)
 	ent.MintyRP_AutoSpawn = true
@@ -232,86 +247,76 @@ local function spawnOne(station)
 	return ent
 end
 
+local function spawnATM(station)
+	local ent = ents.Create("mintyrp_atm")
+	if not IsValid(ent) then return nil end
+	local pos = station.pos
+	if istable(pos) then pos = Vector(pos.x or 0, pos.y or 0, pos.z or 0) end
+	local ang = station.ang or Angle(0, 0, 0)
+	if istable(ang) and not ang.Yaw then
+		ang = Angle(ang.p or 0, ang.y or 0, ang.r or 0)
+	end
+	ent:SetPos(pos)
+	ent:SetAngles(ang)
+	ent.MintyRP_AutoSpawn = true
+	ent.MintyRP_StationId = station.id
+	ent:Spawn()
+	ent:Activate()
+	ent:SetNWString("MintyRP_ATMName", station.name or "ATM")
+	ent:SetNWBool("MintyRP_Beacon", true)
+	return ent
+end
+
 function Bank.SpawnAllTellers()
 	for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
-		if IsValid(ent) and ent.MintyRP_AutoSpawn then
-			ent:Remove()
-		end
+		if IsValid(ent) and ent.MintyRP_AutoSpawn then ent:Remove() end
+	end
+	for _, ent in ipairs(ents.FindByClass("mintyrp_atm")) do
+		if IsValid(ent) and ent.MintyRP_AutoSpawn then ent:Remove() end
 	end
 
-	if not Bank.Stations then
+	if not Bank.Stations or not Bank.ATMStations then
 		Bank.LoadStations()
 	end
 
-	local n = 0
+	local nt, na = 0, 0
 	for i = 1, #(Bank.Stations or {}) do
-		local ent = spawnOne(Bank.Stations[i])
-		if IsValid(ent) then
-			n = n + 1
-			local s = Bank.Stations[i]
-			print(string.format("[MintyRP] Teller '%s' [%s] at %.0f %.0f %.0f",
-				s.name or "?", s.id or "?",
-				(istable(s.pos) and s.pos.x) or s.pos.x,
-				(istable(s.pos) and s.pos.y) or s.pos.y,
-				(istable(s.pos) and s.pos.z) or s.pos.z
-			))
-		end
+		if IsValid(spawnTeller(Bank.Stations[i])) then nt = nt + 1 end
+	end
+	for i = 1, #(Bank.ATMStations or {}) do
+		if IsValid(spawnATM(Bank.ATMStations[i])) then na = na + 1 end
 	end
 
-	if n == 0 then
-		print("[MintyRP] 0 tellers — place them yourself: mintyrp_setteller bank")
-	else
-		print("[MintyRP] Spawned " .. n .. " bank teller(s) from your placements")
+	print(string.format("[MintyRP] Spawned %d teller(s), %d ATM(s)", nt, na))
+	if nt + na == 0 then
+		print("[MintyRP] Place tellers: mintyrp_setteller bank | Place ATMs: mintyrp_setatm gas1")
 	end
-	return n
+	return nt + na
 end
 
---- Kept for property-scan hook compatibility — does NOT invent positions
 function Bank.ResolveFromMap()
 	Bank.LoadStations()
 	Bank.SpawnAllTellers()
-	return #(Bank.Stations or {})
+	return #(Bank.Stations or {}) + #(Bank.ATMStations or {})
 end
 
-local function upsertStation(id, name, pos, yaw)
-	Bank.Stations = Bank.Stations or {}
+local function upsert(list, id, name, pos, yaw)
 	local station = {
 		id = id,
 		name = name,
 		pos = { x = pos.x, y = pos.y, z = pos.z },
 		ang = { p = 0, y = yaw or 0, r = 0 },
 	}
-
 	local replaced = false
-	for i = 1, #Bank.Stations do
-		if Bank.Stations[i].id == id then
-			Bank.Stations[i] = station
+	for i = 1, #list do
+		if list[i].id == id then
+			list[i] = station
 			replaced = true
 			break
 		end
 	end
-	if not replaced then
-		Bank.Stations[#Bank.Stations + 1] = station
-	end
-
-	Bank.SaveStations()
-	Bank.SpawnAllTellers()
+	if not replaced then list[#list + 1] = station end
 	return station, replaced
-end
-
-local function nearestStationIndex(pos)
-	local bestI, bestD
-	for i = 1, #(Bank.Stations or {}) do
-		local s = Bank.Stations[i]
-		local sp = s.pos
-		local v = istable(sp) and Vector(sp.x, sp.y, sp.z) or sp
-		local d = pos:DistToSqr(v)
-		if not bestD or d < bestD then
-			bestD = d
-			bestI = i
-		end
-	end
-	return bestI, bestD
 end
 
 hook.Add("InitPostEntity", "MintyRP_BankSpawn", function()
@@ -330,93 +335,132 @@ end)
 
 hook.Add("MintyRP_CharacterApplied", "MintyRP_BankHint", function(ply)
 	timer.Simple(2.5, function()
-		if not IsValid(ply) or not ply.MintyRP or not ply.MintyRP.Loaded then return end
-		if #(Bank.Stations or {}) == 0 then
-			if ply:IsSuperAdmin() then
-				MintyRP.Util.Notify(ply, "No bank tellers placed. Stand at the desk → mintyrp_setteller bank", 0)
-			end
-			return
-		end
-		if not Bank.IsNearTeller(ply, 1500) then
-			MintyRP.Util.Notify(ply, "Bank tellers: look for green beacons (or mintyrp_tpteller).", 0)
+		if not IsValid(ply) or not ply:IsSuperAdmin() then return end
+		local t = #(Bank.Stations or {})
+		local a = #(Bank.ATMStations or {})
+		if t == 0 and a == 0 then
+			MintyRP.Util.Notify(ply, "No bank access placed. mintyrp_setteller bank  |  mintyrp_setatm gas1", 0)
 		end
 	end)
 end)
 
---[[
-	mintyrp_setteller [slot] [display name...]
-
-	Examples (stand exactly where the NPC should stand):
-	  mintyrp_setteller bank
-	  mintyrp_setteller gas1
-	  mintyrp_setteller gas2 Industrial Gas
-	  mintyrp_setteller spawn
-	  mintyrp_setteller My Custom Desk
-]]
 concommand.Add("mintyrp_setteller", function(ply, cmd, args)
 	if IsValid(ply) and not ply:IsSuperAdmin() then return end
 	if not IsValid(ply) then
-		print("mintyrp_setteller must be run in-game while standing at the spot")
+		print("mintyrp_setteller must be run in-game")
 		return
 	end
 
 	args = args or {}
 	local slotKey = string.lower(tostring(args[1] or ""))
-	local slot = SLOT_ALIASES[slotKey]
 
+	-- Gas stations are ATMs, not tellers
+	if ATM_SLOTS[slotKey] or string.StartWith(slotKey, "gas") then
+		MintyRP.Util.Notify(ply, "Gas stations use ATMs — run: mintyrp_setatm " .. (slotKey ~= "" and slotKey or "gas1"), 2)
+		return
+	end
+
+	local slot = TELLER_SLOTS[slotKey]
 	local id, name
 	if slot then
 		id = slot.id
 		name = table.concat(args, " ", 2)
 		if name == "" then name = slot.name end
 	else
-		-- Freeform: entire args = display name, unique id
 		name = table.concat(args, " ")
 		if name == "" then name = "Bank Teller" end
 		id = "teller_" .. tostring(os.time())
 	end
 
-	local pos = ply:GetPos()
-	local yaw = ply:EyeAngles().y
-	local station, replaced = upsertStation(id, name, pos, yaw)
+	Bank.Stations = Bank.Stations or {}
+	local station, replaced = upsert(Bank.Stations, id, name, ply:GetPos(), ply:EyeAngles().y)
+	Bank.SaveStations()
+	Bank.SpawnAllTellers()
+	MintyRP.Util.Notify(ply, (replaced and "Updated" or "Placed") .. " teller '" .. station.name .. "'", 1)
+end)
 
-	local msg = string.format("%s teller '%s' [%s] at your feet (yaw %.0f)",
-		replaced and "Updated" or "Placed", station.name, station.id, yaw)
-	MintyRP.Util.Notify(ply, msg, 1)
-	print("[MintyRP] " .. msg)
+concommand.Add("mintyrp_setatm", function(ply, cmd, args)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	if not IsValid(ply) then
+		print("mintyrp_setatm must be run in-game")
+		return
+	end
+
+	args = args or {}
+	local slotKey = string.lower(tostring(args[1] or "atm"))
+	local slot = ATM_SLOTS[slotKey]
+	local id, name
+	if slot then
+		id = slot.id
+		name = table.concat(args, " ", 2)
+		if name == "" then name = slot.name end
+	else
+		name = table.concat(args, " ")
+		if name == "" then name = "ATM" end
+		id = "atm_" .. tostring(os.time())
+	end
+
+	Bank.ATMStations = Bank.ATMStations or {}
+	local station, replaced = upsert(Bank.ATMStations, id, name, ply:GetPos(), ply:EyeAngles().y)
+	Bank.SaveATMs()
+	Bank.SpawnAllTellers()
+	MintyRP.Util.Notify(ply, (replaced and "Updated" or "Placed") .. " ATM '" .. station.name .. "'", 1)
+	print("[MintyRP] ATM " .. station.id .. " at feet of " .. ply:Nick())
 end)
 
 concommand.Add("mintyrp_removeteller", function(ply)
 	if IsValid(ply) and not ply:IsSuperAdmin() then return end
 	if not IsValid(ply) then return end
-
 	Bank.Stations = Bank.Stations or {}
 	if #Bank.Stations == 0 then
-		MintyRP.Util.Notify(ply, "No saved tellers.", 3)
+		MintyRP.Util.Notify(ply, "No tellers. Use mintyrp_removeatm for ATMs.", 3)
 		return
 	end
-
-	local idx = nearestStationIndex(ply:GetPos())
-	if not idx then return end
-	local removed = table.remove(Bank.Stations, idx)
+	local bestI, bestD
+	for i = 1, #Bank.Stations do
+		local p = Bank.Stations[i].pos
+		local d = ply:GetPos():DistToSqr(Vector(p.x, p.y, p.z))
+		if not bestD or d < bestD then bestD, bestI = d, i end
+	end
+	local removed = table.remove(Bank.Stations, bestI)
 	Bank.SaveStations()
 	Bank.SpawnAllTellers()
 	MintyRP.Util.Notify(ply, "Removed teller '" .. (removed.name or "?") .. "'", 0)
-	print("[MintyRP] Removed teller " .. tostring(removed.id))
+end)
+
+concommand.Add("mintyrp_removeatm", function(ply)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	if not IsValid(ply) then return end
+	Bank.ATMStations = Bank.ATMStations or {}
+	if #Bank.ATMStations == 0 then
+		MintyRP.Util.Notify(ply, "No ATMs saved.", 3)
+		return
+	end
+	local bestI, bestD
+	for i = 1, #Bank.ATMStations do
+		local p = Bank.ATMStations[i].pos
+		local d = ply:GetPos():DistToSqr(Vector(p.x, p.y, p.z))
+		if not bestD or d < bestD then bestD, bestI = d, i end
+	end
+	local removed = table.remove(Bank.ATMStations, bestI)
+	Bank.SaveATMs()
+	Bank.SpawnAllTellers()
+	MintyRP.Util.Notify(ply, "Removed ATM '" .. (removed.name or "?") .. "'", 0)
 end)
 
 concommand.Add("mintyrp_listtellers", function(ply)
 	if IsValid(ply) and not ply:IsSuperAdmin() then return end
 	Bank.LoadStations()
-	print("[MintyRP] === Teller placements (" .. #(Bank.Stations or {}) .. ") ===")
-	for i = 1, #(Bank.Stations or {}) do
-		local s = Bank.Stations[i]
-		local p = s.pos or {}
-		print(string.format("  %d) [%s] %s  @ %.0f %.0f %.0f",
-			i, s.id or "?", s.name or "?", p.x or 0, p.y or 0, p.z or 0))
+	print("[MintyRP] === Tellers ===")
+	for i, s in ipairs(Bank.Stations or {}) do
+		print(string.format("  %d) [%s] %s", i, s.id, s.name))
+	end
+	print("[MintyRP] === ATMs ===")
+	for i, s in ipairs(Bank.ATMStations or {}) do
+		print(string.format("  %d) [%s] %s", i, s.id, s.name))
 	end
 	if IsValid(ply) then
-		MintyRP.Util.Notify(ply, #(Bank.Stations or {}) .. " teller(s) — see console", 0)
+		MintyRP.Util.Notify(ply, string.format("%d teller(s), %d ATM(s)", #(Bank.Stations or {}), #(Bank.ATMStations or {})), 0)
 	end
 end)
 
@@ -425,41 +469,62 @@ concommand.Add("mintyrp_cleartellers", function(ply)
 	Bank.Stations = {}
 	Bank.SaveStations()
 	Bank.SpawnAllTellers()
-	if IsValid(ply) then
-		MintyRP.Util.Notify(ply, "All tellers cleared. Place with mintyrp_setteller bank", 0)
-	end
-	print("[MintyRP] All teller placements cleared")
+	if IsValid(ply) then MintyRP.Util.Notify(ply, "Tellers cleared (ATMs kept).", 0) end
+end)
+
+concommand.Add("mintyrp_clearatms", function(ply)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	Bank.ATMStations = {}
+	Bank.SaveATMs()
+	Bank.SpawnAllTellers()
+	if IsValid(ply) then MintyRP.Util.Notify(ply, "ATMs cleared.", 0) end
 end)
 
 concommand.Add("mintyrp_tpteller", function(ply)
 	if not IsValid(ply) then return end
 	if not ply:IsSuperAdmin() and not (ply.MintyRP and ply.MintyRP.Loaded) then return end
-
 	local best, bestD
-	for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
-		if IsValid(ent) then
-			local d = ply:GetPos():DistToSqr(ent:GetPos())
-			if not bestD or d < bestD then
-				bestD = d
-				best = ent
+	for _, class in ipairs({ "mintyrp_bank_npc", "mintyrp_atm" }) do
+		for _, ent in ipairs(ents.FindByClass(class)) do
+			if IsValid(ent) then
+				local d = ply:GetPos():DistToSqr(ent:GetPos())
+				if not bestD or d < bestD then bestD, best = d, ent end
 			end
 		end
 	end
 	if not IsValid(best) then
-		MintyRP.Util.Notify(ply, "No tellers placed. Superadmin: mintyrp_setteller bank", 3)
+		MintyRP.Util.Notify(ply, "None placed. mintyrp_setteller bank / mintyrp_setatm gas1", 3)
 		return
 	end
-	ply:SetPos(best:GetPos() + best:GetForward() * 60 + Vector(0, 0, 8))
-	MintyRP.Util.Notify(ply, "Teleported to " .. best:GetNWString("MintyRP_NPCName", "teller"), 0)
+	ply:SetPos(best:GetPos() + best:GetForward() * 50 + Vector(0, 0, 8))
+	local label = best:GetClass() == "mintyrp_atm"
+		and best:GetNWString("MintyRP_ATMName", "ATM")
+		or best:GetNWString("MintyRP_NPCName", "teller")
+	MintyRP.Util.Notify(ply, "Teleported to " .. label, 0)
 end)
 
 concommand.Add("mintyrp_respawntellers", function(ply)
 	if IsValid(ply) and not ply:IsSuperAdmin() then return end
 	Bank.LoadStations()
 	Bank.SpawnAllTellers()
+end)
+
+concommand.Add("mintyrp_wipeplacements", function(ply)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	Bank.Stations = {}
+	Bank.ATMStations = {}
+	if not file.Exists("mintyrp", "DATA") then file.CreateDir("mintyrp") end
+	file.Write(TELLER_FILE, "[]")
+	file.Write(ATM_FILE, "[]")
+	-- Also wipe legacy combined file if present
+	if file.Exists("mintyrp/teller_stations.json", "DATA") then
+		file.Write("mintyrp/teller_stations.json", "[]")
+	end
+	Bank.SpawnAllTellers()
+	print("[MintyRP] Wiped all teller + ATM placements. Place with mintyrp_setteller / mintyrp_setatm")
 	if IsValid(ply) then
-		MintyRP.Util.Notify(ply, "Respawned " .. #(Bank.Stations or {}) .. " teller(s) from save.", 0)
+		MintyRP.Util.Notify(ply, "All bank placements wiped. Use setteller / setatm at the real spots.", 0)
 	end
 end)
 
-print("[MintyRP] Bank server loaded (manual teller placement)")
+print("[MintyRP] Bank server loaded (tellers + ATMs)")
