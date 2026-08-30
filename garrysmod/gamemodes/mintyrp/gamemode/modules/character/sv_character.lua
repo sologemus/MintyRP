@@ -222,8 +222,8 @@ net.Receive("MintyRP_CharacterCreate", function(len, ply)
 	if not row then
 		local messages = {
 			slots_full = "All character slots are full.",
-			db = "Could not create character (database).",
-			account = "Account error.",
+			db = "Could not create character (database). Try mintyrp_dbreset as host, then reconnect.",
+			account = "Account error — try mintyrp_dbreset as host.",
 		}
 		MintyRP.Util.Notify(ply, messages[createErr] or "Create failed.", 3)
 		print("[MintyRP] CreateCharacter failed: " .. tostring(createErr) .. " for " .. tostring(sid))
