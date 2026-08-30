@@ -69,6 +69,8 @@ Yes — test this before stacking more systems. Fastest path is a **listen serve
    - [ ] Reconnect → character list shows your slot; select works
    - [ ] `mintyrp_dumppos` (superadmin) prints a Vector
 
+If create fails with a database error: as host run `mintyrp_dbreset` in console, reconnect, try again.
+
 Optional loading screen: host `loading/` on HTTPS, set `sv_loadingurl` from `cfg/server.cfg.example`, join a dedicated server once.
 
 If something fails, copy the **red console errors** from client + server — that’s enough to fix the next pass.
