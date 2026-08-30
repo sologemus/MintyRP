@@ -135,6 +135,12 @@ function Prop.ApplyLock(propertyId, locked)
 	end
 
 	MintyRP.Database.SetPropertyLock(propertyId, st.locked)
+
+	for _, ply in ipairs(player.GetAll()) do
+		if Prop.IsOwner(ply, propertyId) then
+			Prop.SyncPlayer(ply)
+		end
+	end
 end
 
 function Prop.SyncPlayer(ply)
