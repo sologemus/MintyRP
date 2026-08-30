@@ -6,15 +6,17 @@ Custom serious roleplay gamemode for Garry's Mod — lightweight Perpheads-style
 
 1. Copy `garrysmod/gamemodes/mintyrp` into your server's `garrysmod/gamemodes/` folder.
 2. Install the map [RP Rockford v2](https://steamcommunity.com/sharedfiles/filedetails/?id=622810630) (`rp_rockford_v2b`) plus its content pack / CS:S.
-3. In `server.cfg` (or command line):
+3. Host the `loading/` folder on HTTPS (GitHub Pages, Cloudflare Pages, etc.).
+4. Merge settings from `cfg/server.cfg.example` into `garrysmod/cfg/server.cfg`, especially:
 
 ```
 hostname "MintyRP | Rockford"
-gamemode mintyrp
-map rp_rockford_v2b
+sv_loadingurl "https://YOUR_HOST/mintyrp/loading/index.html?steamid=%s"
 ```
 
-4. Start the dedicated server (or listen server) and select **MintyRP** from the gamemode list.
+5. Start with `+gamemode mintyrp +map rp_rockford_v2b`.
+
+The main-menu / home-screen logo is `logo.png` (+ `icon24.png`) in the gamemode root — GMod picks these up automatically when the gamemode is installed.
 
 ## Controls
 
@@ -28,7 +30,11 @@ Superadmins: `mintyrp_dumppos` prints your current Vector/Angle for updating loc
 
 ```
 mintyrp/
+  logo.png            Main menu / home-screen logo
+  icon24.png          24×24 menu icon
   mintyrp.txt
+  cfg/server.cfg.example
+  loading/            Custom join loading screen (HTML)
   gamemode/
     init.lua          Server entry (GM hooks, net strings)
     cl_init.lua       Client entry
@@ -47,8 +53,26 @@ mintyrp/
       player/           Job stubs
 ```
 
+## What's next (to reach Perpheads-like depth)
+
+Priority systems still needed beyond this foundation:
+
+1. **Character creation** — name, model, description; multi-character slots
+2. **Property / doors** — ownable apartments & storefronts on Rockford; keys; eviction
+3. **Storage boxes** — dual-pane inventory ↔ property storage (drag/drop, search, categories)
+4. **Economy** — ATM/bank, paychecks, shops/NPCs, crafting + workbench queue
+5. **Jobs & duty** — PD / EMS / fire whitelists, vehicles, cuff/drag/jail, medicals
+6. **Vehicles** — dealership, keys, fuel, impound, lockpicking rules
+7. **Phone / radio** — texts, contacts, 911, org channels
+8. **HUD & F1/Q menus** — needs, laws, scoreboard, animation menu
+9. **Admin / mod tools** — sit, warn, spectate, logs; anti-RDM helpers
+10. **Map polish** — replace placeholder Vectors via `mintyrp_dumppos`; zone triggers
+11. **Workshop content pack** — custom models/materials + FastDL/`sv_downloadurl`
+12. **MySQL option** — scale beyond SQLite for multi-server
+
 ## Notes
 
 - Location coordinates in `modules/locations/sh_locations.lua` are **placeholders**. Walk the map, run `mintyrp_dumppos`, and replace Vectors.
-- Inventory supports weight limits, categories, use/drop, and a storage-transfer stub (Perpheads-like dual-pane UI comes next).
+- Inventory supports weight limits, categories, use/drop, and a storage-transfer stub.
 - All `net.Receive` handlers validate inputs server-side.
+- Loading screen details: [`loading/README.md`](loading/README.md).
