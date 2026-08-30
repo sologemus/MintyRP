@@ -21,7 +21,7 @@ local string_format = string.format
 local type = type
 local pairs = pairs
 
-local SCHEMA_VERSION = 6
+local SCHEMA_VERSION = 7
 
 local function sid(steamid64)
 	if steamid64 == nil then return nil end
@@ -182,6 +182,35 @@ function DB.EnsureSchema()
 			sql_Query("ALTER TABLE mintyrp_characters ADD COLUMN last_paycheck INTEGER NOT NULL DEFAULT 0")
 			print("[MintyRP] Added mintyrp_characters.last_paycheck")
 		end
+	end
+
+	-- Schema v7: container storage
+	if not hasColumn("mintyrp_storages", "storage_id") then
+		sql_Query([[
+			CREATE TABLE IF NOT EXISTS mintyrp_storages (
+				storage_id TEXT PRIMARY KEY,
+				name TEXT NOT NULL DEFAULT 'Storage',
+				max_weight INTEGER NOT NULL DEFAULT 100,
+				owner_character_id INTEGER,
+				updated_at INTEGER NOT NULL
+			);
+		]])
+		print("[MintyRP] Created mintyrp_storages")
+	end
+	if not hasColumn("mintyrp_storage_items", "storage_id") then
+		sql_Query([[
+			CREATE TABLE IF NOT EXISTS mintyrp_storage_items (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				storage_id TEXT NOT NULL,
+				slot INTEGER NOT NULL,
+				item_id TEXT NOT NULL,
+				amount INTEGER NOT NULL DEFAULT 1,
+				meta TEXT NOT NULL DEFAULT '{}',
+				UNIQUE(storage_id, slot)
+			);
+		]])
+		sql_Query("CREATE INDEX IF NOT EXISTS idx_storage_items ON mintyrp_storage_items(storage_id)")
+		print("[MintyRP] Created mintyrp_storage_items")
 	end
 
 	-- Verify critical column after repair
@@ -613,6 +642,8 @@ end
 
 --- Superadmin: wipe MintyRP tables (keeps sv.db otherwise)
 function DB.ResetAll()
+	sql_Query("DROP TABLE IF EXISTS mintyrp_storage_items")
+	sql_Query("DROP TABLE IF EXISTS mintyrp_storages")
 	sql_Query("DROP TABLE IF EXISTS mintyrp_inventory")
 	sql_Query("DROP TABLE IF EXISTS mintyrp_characters")
 	sql_Query("DROP TABLE IF EXISTS mintyrp_players")

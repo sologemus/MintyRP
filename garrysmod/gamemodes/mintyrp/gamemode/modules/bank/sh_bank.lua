@@ -2,13 +2,11 @@
 	MintyRP — Bank shared
 	Realm: SHARED
 
-	Tellers are NOT auto-placed from placeholders.
-	Host stands at the desk and runs mintyrp_setteller.
+	Tellers (NPC) at the bank. ATMs at gas stations / streets.
+	Host places both manually — no placeholder coords.
 ---------------------------------------------------------------------------]]
 
 MintyRP.Bank = MintyRP.Bank or {}
-
--- Empty on purpose — placements live in data/mintyrp/teller_stations.json
 MintyRP.Bank.DefaultStations = {}
 
 print("[MintyRP] Bank shared loaded")

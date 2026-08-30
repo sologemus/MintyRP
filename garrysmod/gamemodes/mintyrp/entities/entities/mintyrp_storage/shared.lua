@@ -1,0 +1,9 @@
+ENT.Type = "anim"
+ENT.Base = "base_anim"
+ENT.PrintName = "MintyRP Storage Crate"
+ENT.Author = "MintyRP"
+ENT.Category = "MintyRP"
+ENT.Spawnable = true
+ENT.AdminOnly = true
+ENT.Model = "models/props_junk/wood_crate002a.mdl"
+ENT.DefaultMaxWeight = 100

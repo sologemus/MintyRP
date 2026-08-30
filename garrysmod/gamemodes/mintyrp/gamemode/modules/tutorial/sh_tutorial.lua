@@ -17,7 +17,7 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "bank",
 		title = "Bank tellers",
-		body = "Bank tellers are placed by the host (green beacon).\n\nPress E to deposit or withdraw.\nIf none exist yet, host: stand at the desk → mintyrp_setteller bank",
+		body = "Bank tellers are at the bank (green beacon).\nGas stations have ATMs (blue beacon) — same deposit/withdraw.\n\nPress E on either. Host places them:\nmintyrp_setteller bank   ·   mintyrp_setatm gas1",
 	},
 	{
 		id = "keys",
@@ -27,7 +27,7 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "menus",
 		title = "Menus",
-		body = "F2 — Inventory & Work\nF3 — Properties\nN — Buy the door you're looking at\n\nConsole: mintyrp_inventory / mintyrp_properties / mintyrp_buydoor",
+		body = "F2 — Inventory (Use / Drop / Work jobs)\nE on a crate — dual-pane storage transfer\nF3 — Properties\nN — Buy the door you're looking at",
 	},
 	{
 		id = "work",
