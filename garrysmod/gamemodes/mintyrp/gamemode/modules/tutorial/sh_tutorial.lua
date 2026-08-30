@@ -22,7 +22,7 @@ MintyRP.Tutorial.Steps = {
 	{
 		id = "keys",
 		title = "Keys & doors",
-		body = "You spawn with fists, a physgun, and keys.\n\nKeys: left-click lock / right-click unlock owned doors.\nWalk up to a for-sale door and press N to buy the property.",
+		body = "Walk up to any residential / shop door — you should see For sale + price.\n\nPress N to buy (uses cash first, then bank).\nKeys: left-click lock / right-click unlock owned doors.",
 	},
 	{
 		id = "menus",

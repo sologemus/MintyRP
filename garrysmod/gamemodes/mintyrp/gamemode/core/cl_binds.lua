@@ -40,18 +40,32 @@ concommand.Add("mintyrp_buydoor", function()
 
 	local ply = LocalPlayer()
 	local tr = ply:GetEyeTrace()
-	if not tr or not IsValid(tr.Entity) then return end
-	if not MintyRP.Property.IsDoor(tr.Entity) then return end
-
-	local id = tr.Entity:GetNWString("MintyRP_Property", "")
-	if id == "" then
-		notification.AddLegacy("Door is not linked to a property.", NOTIFY_ERROR, 3)
+	if not tr or not IsValid(tr.Entity) then
+		notification.AddLegacy("Look at a door to buy it.", NOTIFY_ERROR, 3)
+		return
+	end
+	if tr.HitPos:DistToSqr(ply:EyePos()) > (180 * 180) then
+		notification.AddLegacy("Too far from the door.", NOTIFY_ERROR, 3)
+		return
+	end
+	if not MintyRP.Property.IsDoor(tr.Entity) then
+		notification.AddLegacy("That's not a door.", NOTIFY_ERROR, 3)
 		return
 	end
 
-	local def = MintyRP.Property.Get(id)
-	if def and not def.ownable then
-		notification.AddLegacy(MintyRP.Property.GetOwnerLabel(def), NOTIFY_ERROR, 3)
+	local info = MintyRP.Property.DoorInfo and MintyRP.Property.DoorInfo(tr.Entity)
+	local id = info and info.id or tr.Entity:GetNWString("MintyRP_Property", "")
+	if id == "" then
+		notification.AddLegacy("Door is not linked — host: mintyrp_propscan", NOTIFY_ERROR, 3)
+		return
+	end
+
+	local ownable = info and info.ownable
+	if ownable == false then
+		notification.AddLegacy(
+			(info.def and MintyRP.Property.GetOwnerLabel(info.def)) or "Not for sale",
+			NOTIFY_ERROR, 3
+		)
 		return
 	end
 

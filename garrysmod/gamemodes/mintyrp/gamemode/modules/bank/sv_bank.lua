@@ -156,6 +156,25 @@ function Bank.SaveStations()
 	file.Write(DATA_FILE, util.TableToJSON(Bank.Stations or {}, true) or "[]")
 end
 
+local function posValid(pos)
+	if not pos then return false end
+	local contents = util.PointContents(pos + Vector(0, 0, 36))
+	if bit.band(contents, CONTENTS_SOLID) ~= 0 then return false end
+	return true
+end
+
+local function groundPos(pos)
+	local tr = util.TraceLine({
+		start = pos + Vector(0, 0, 128),
+		endpos = pos - Vector(0, 0, 512),
+		mask = MASK_SOLID_BRUSHONLY,
+	})
+	if tr.Hit then
+		return tr.HitPos + Vector(0, 0, 2)
+	end
+	return pos
+end
+
 local function spawnOne(station)
 	if not scripted_ents.GetStored("mintyrp_bank_npc") and not scripted_ents.Get("mintyrp_bank_npc") then
 		print("[MintyRP] ERROR: mintyrp_bank_npc not registered")
@@ -174,14 +193,16 @@ local function spawnOne(station)
 		ang = Angle(ang.p or ang[1] or 0, ang.y or ang[2] or 0, ang.r or ang[3] or 0)
 	end
 
-	-- Drop to ground so they aren't buried/floating from bad Z
-	local tr = util.TraceLine({
-		start = pos + Vector(0, 0, 64),
-		endpos = pos - Vector(0, 0, 256),
-		mask = MASK_SOLID_BRUSHONLY,
-	})
-	if tr.Hit then
-		pos = tr.HitPos + Vector(0, 0, 2)
+	pos = groundPos(pos)
+	if not posValid(pos) then
+		-- Nudge sideways and retry ground
+		for _, off in ipairs({ Vector(64, 0, 0), Vector(-64, 0, 0), Vector(0, 64, 0), Vector(0, -64, 0), Vector(96, 96, 0) }) do
+			local try = groundPos(pos + off)
+			if posValid(try) then
+				pos = try
+				break
+			end
+		end
 	end
 
 	ent:SetPos(pos)
@@ -193,6 +214,147 @@ local function spawnOne(station)
 	ent:SetNWString("MintyRP_NPCName", station.name or "Bank Teller")
 	ent:SetNWBool("MintyRP_Beacon", true)
 	return ent
+end
+
+local function avgDoorPos(propertyId)
+	local Prop = MintyRP.Property
+	if not Prop or not Prop.State or not Prop.State[propertyId] then return nil end
+	local doors = Prop.State[propertyId].doors
+	if not doors or #doors == 0 then return nil, nil end
+
+	local avg = Vector(0, 0, 0)
+	local ang = Angle(0, 0, 0)
+	for i = 1, #doors do
+		if IsValid(doors[i]) then
+			avg = avg + doors[i]:GetPos()
+			ang = doors[i]:GetAngles()
+		end
+	end
+	avg = avg / #doors
+	-- Stand in front of the door (outside)
+	local front = avg + ang:Forward() * 56 + Vector(0, 0, 2)
+	return front, Angle(0, ang.y + 180, 0)
+end
+
+local function findSpawnPos()
+	local starts = ents.FindByClass("info_player_start")
+	if #starts == 0 then
+		starts = ents.FindByClass("info_player_deathmatch")
+	end
+	if #starts > 0 and IsValid(starts[1]) then
+		local e = starts[1]
+		local pos = e:GetPos() + e:GetForward() * 80 + e:GetRight() * 40
+		return groundPos(pos), Angle(0, e:GetAngles().y + 180, 0)
+	end
+	if MintyRP.Locations and MintyRP.Locations.GetDefaultSpawn then
+		local sp = MintyRP.Locations.GetDefaultSpawn()
+		if sp and sp.pos then
+			return groundPos(sp.pos + Vector(60, 40, 0)), sp.ang or Angle(0, 90, 0)
+		end
+	end
+	return nil, nil
+end
+
+local function findNamedDoorPos(patterns)
+	local doors = ents.FindByClass("prop_door_rotating")
+	table.Add(doors, ents.FindByClass("func_door"))
+	table.Add(doors, ents.FindByClass("func_door_rotating"))
+	for i = 1, #doors do
+		local d = doors[i]
+		if IsValid(d) then
+			local n = string.lower(d:GetName() or "")
+			for _, pat in ipairs(patterns) do
+				if n ~= "" and string.find(n, pat, 1, true) then
+					local ang = d:GetAngles()
+					return groundPos(d:GetPos() + ang:Forward() * 56), Angle(0, ang.y + 180, 0)
+				end
+			end
+		end
+	end
+	return nil, nil
+end
+
+--- Build stations from real map doors / spawn entities (not placeholders)
+function Bank.ResolveFromMap()
+	local stations = {}
+	local custom = {}
+
+	-- Keep admin-placed custom_* stations from disk
+	if file.Exists(DATA_FILE, "DATA") then
+		local decoded = util.JSONToTable(file.Read(DATA_FILE, "DATA") or "")
+		if type(decoded) == "table" then
+			for i = 1, #decoded do
+				local s = decoded[i]
+				if s and type(s.id) == "string" and string.StartWith(s.id, "custom_") then
+					custom[#custom + 1] = s
+				end
+			end
+		end
+	end
+
+	local function add(id, name, pos, ang)
+		if not pos then return false end
+		stations[#stations + 1] = {
+			id = id,
+			name = name,
+			pos = { x = pos.x, y = pos.y, z = pos.z },
+			ang = { p = ang and ang.p or 0, y = ang and ang.y or 0, r = 0 },
+		}
+		return true
+	end
+
+	-- 1) Always: civilian spawn kiosk
+	local spawnPos, spawnAng = findSpawnPos()
+	if spawnPos then
+		add("spawn_kiosk", "City Spawn Kiosk", spawnPos, spawnAng)
+	end
+
+	-- 2) Bank from linked doors, else name search
+	local bankPos, bankAng = avgDoorPos("city_bank")
+	if not bankPos then
+		bankPos, bankAng = findNamedDoorPos({ "bank", "vault" })
+	end
+	if bankPos then
+		add("bank_main", "Rockford Bank", bankPos, bankAng)
+	end
+
+	-- 3) Gas desks from franchise props / names
+	local gasSpecs = {
+		{ id = "gas_downtown", name = "Downtown Gas Desk", prop = "fran_gas_downtown" },
+		{ id = "gas_industrial", name = "Industrial Gas Desk", prop = "fran_gas_industrial" },
+		{ id = "gas_suburb", name = "Suburban Gas Desk", prop = "fran_gas_suburb" },
+	}
+	local gasFound = 0
+	for _, g in ipairs(gasSpecs) do
+		local pos, ang = avgDoorPos(g.prop)
+		if pos then
+			add(g.id, g.name, pos, ang)
+			gasFound = gasFound + 1
+		end
+	end
+	if gasFound == 0 then
+		-- Fallback: any door named gas/fuel — one desk is better than none
+		local pos, ang = findNamedDoorPos({ "gas", "fuel", "petrol", "station" })
+		if pos then
+			add("gas_auto", "Gas Station Desk", pos, ang)
+		end
+	end
+
+	-- Append customs
+	for i = 1, #custom do
+		stations[#stations + 1] = custom[i]
+	end
+
+	if #stations == 0 then
+		print("[MintyRP] WARNING: no teller stations resolved — using defaults")
+		Bank.Stations = table.Copy(Bank.DefaultStations or {})
+	else
+		Bank.Stations = stations
+		print(string.format("[MintyRP] Resolved %d teller stations from map (custom=%d)", #stations, #custom))
+	end
+
+	Bank.SpawnAllTellers()
+	return #Bank.Stations
 end
 
 function Bank.SpawnAllTellers()
@@ -219,25 +381,33 @@ function Bank.SpawnAllTellers()
 end
 
 local function ensureTellers()
-	timer.Simple(2, function()
-		local expected = #(Bank.Stations or Bank.DefaultStations or {})
+	timer.Simple(4, function()
 		local count = 0
 		for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
 			if IsValid(ent) then count = count + 1 end
 		end
-		if count < math.max(1, expected) then
-			Bank.LoadStations()
-			Bank.SpawnAllTellers()
+		if count < 1 then
+			Bank.ResolveFromMap()
 		end
 	end)
 end
 
+-- Property scan calls ResolveFromMap; early spawn only as safety net
 hook.Add("InitPostEntity", "MintyRP_BankSpawn", function()
-	Bank.LoadStations()
-	timer.Simple(1, Bank.SpawnAllTellers)
+	timer.Simple(5, function()
+		local count = 0
+		for _, ent in ipairs(ents.FindByClass("mintyrp_bank_npc")) do
+			if IsValid(ent) then count = count + 1 end
+		end
+		if count < 1 then
+			Bank.ResolveFromMap()
+		end
+	end)
 end)
 hook.Add("PostCleanupMap", "MintyRP_BankRespawn", function()
-	timer.Simple(1, Bank.SpawnAllTellers)
+	timer.Simple(3, function()
+		Bank.ResolveFromMap()
+	end)
 end)
 hook.Add("PlayerInitialSpawn", "MintyRP_BankEnsure", ensureTellers)
 
@@ -271,24 +441,35 @@ concommand.Add("mintyrp_setteller", function(ply, cmd, args)
 		ang = { p = 0, y = ply:EyeAngles().y, r = 0 },
 	}
 	Bank.Stations[#Bank.Stations + 1] = station
-	Bank.SaveStations()
 
-	local ent = spawnOne({
+	-- Persist only custom stations + current resolved ones? Save customs to file.
+	local toSave = {}
+	for i = 1, #Bank.Stations do
+		local s = Bank.Stations[i]
+		if s and type(s.id) == "string" and string.StartWith(s.id, "custom_") then
+			toSave[#toSave + 1] = s
+		end
+	end
+	if not file.Exists("mintyrp", "DATA") then file.CreateDir("mintyrp") end
+	file.Write(DATA_FILE, util.TableToJSON(toSave, true) or "[]")
+
+	spawnOne({
 		id = id,
 		name = name,
 		pos = ply:GetPos(),
 		ang = Angle(0, ply:EyeAngles().y, 0),
 	})
 	MintyRP.Util.Notify(ply, "Teller saved: " .. name, 1)
-	print("[MintyRP] Saved teller '" .. name .. "' — total stations " .. #Bank.Stations)
+	print("[MintyRP] Saved teller '" .. name .. "'")
 end)
 
 concommand.Add("mintyrp_cleartellers", function(ply)
 	if IsValid(ply) and not ply:IsSuperAdmin() then return end
-	Bank.Stations = table.Copy(Bank.DefaultStations or {})
-	Bank.SaveStations()
-	Bank.SpawnAllTellers()
-	if IsValid(ply) then MintyRP.Util.Notify(ply, "Tellers reset to defaults.", 0) end
+	if file.Exists(DATA_FILE, "DATA") then
+		file.Write(DATA_FILE, "[]")
+	end
+	Bank.ResolveFromMap()
+	if IsValid(ply) then MintyRP.Util.Notify(ply, "Tellers re-resolved from map.", 0) end
 end)
 
 concommand.Add("mintyrp_tpteller", function(ply)
@@ -315,7 +496,7 @@ end)
 
 concommand.Add("mintyrp_respawntellers", function(ply)
 	if IsValid(ply) and not ply:IsSuperAdmin() then return end
-	Bank.SpawnAllTellers()
+	Bank.ResolveFromMap()
 end)
 
 print("[MintyRP] Bank server loaded")
