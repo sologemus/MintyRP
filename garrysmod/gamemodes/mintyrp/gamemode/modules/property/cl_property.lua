@@ -197,23 +197,6 @@ function Prop.OpenMenu()
 	sheet:AddSheet("Catalog", catalog, "icon16/house.png")
 end
 
-hook.Add("PlayerButtonDown", "MintyRP_PropertyKeys", function(ply, button)
-	if ply ~= LocalPlayer() then return end
-	if not ply.MintyRP or not ply.MintyRP.Loaded then return end
-
-	if button == KEY_F3 then
-		Prop.OpenMenu()
-		return
-	end
-
-	-- N = buy (B is GMod zoom — do not use)
-	if button == KEY_N then
-		local door = tracedDoor()
-		if not door then return end
-		local id = door:GetNWString("MintyRP_Property", "")
-		if id == "" or Prop.Owned[id] ~= nil then return end
-		sendAction(1, id)
-	end
-end)
+-- Key binds handled in core/cl_binds.lua (F2/F3/N)
 
 print("[MintyRP] Property client loaded")
