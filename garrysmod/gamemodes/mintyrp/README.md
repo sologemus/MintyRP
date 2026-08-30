@@ -77,7 +77,7 @@ If something fails, copy the **red console errors** from client + server — tha
 
 Priority systems still needed beyond this foundation:
 
-1. **Character creation** — name, model, description; multi-character slots
+1. ~~**Character creation**~~ — name, model, 3 slots (done)
 2. **Property / doors** — ownable apartments & storefronts on Rockford; keys; eviction
 3. **Storage boxes** — dual-pane inventory ↔ property storage (drag/drop, search, categories)
 4. **Economy** — ATM/bank, paychecks, shops/NPCs, crafting + workbench queue

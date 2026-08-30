@@ -54,6 +54,12 @@ function Ply.Save(ply)
 	local data = ply.MintyRP
 	if not data or not data.Loaded or not data.characterId then return end
 
+	data.extra = data.extra or {}
+	if data.appearance then
+		data.extra.skin = data.appearance.skin or 0
+		data.extra.bodygroups = data.appearance.bodygroups or {}
+	end
+
 	local json = util_TableToJSON(data.extra or {}) or "{}"
 	MintyRP.Database.SaveCharacter(data.characterId, data.money, data.bank, data.model or DEFAULT_MODEL, json)
 
@@ -80,6 +86,10 @@ function Ply.OnSpawn(ply)
 	ply:SetMaxHealth(100)
 	ply:SetHealth(100)
 	ply:SetModel(data.model or DEFAULT_MODEL)
+
+	if MintyRP.Character and MintyRP.Character.ApplyAppearance then
+		MintyRP.Character.ApplyAppearance(ply, data.appearance or data.extra)
+	end
 end
 
 function Ply.GetMoney(ply)
