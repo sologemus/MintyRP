@@ -509,4 +509,22 @@ concommand.Add("mintyrp_respawntellers", function(ply)
 	Bank.SpawnAllTellers()
 end)
 
+concommand.Add("mintyrp_wipeplacements", function(ply)
+	if IsValid(ply) and not ply:IsSuperAdmin() then return end
+	Bank.Stations = {}
+	Bank.ATMStations = {}
+	if not file.Exists("mintyrp", "DATA") then file.CreateDir("mintyrp") end
+	file.Write(TELLER_FILE, "[]")
+	file.Write(ATM_FILE, "[]")
+	-- Also wipe legacy combined file if present
+	if file.Exists("mintyrp/teller_stations.json", "DATA") then
+		file.Write("mintyrp/teller_stations.json", "[]")
+	end
+	Bank.SpawnAllTellers()
+	print("[MintyRP] Wiped all teller + ATM placements. Place with mintyrp_setteller / mintyrp_setatm")
+	if IsValid(ply) then
+		MintyRP.Util.Notify(ply, "All bank placements wiped. Use setteller / setatm at the real spots.", 0)
+	end
+end)
+
 print("[MintyRP] Bank server loaded (tellers + ATMs)")

@@ -1,5 +1,5 @@
 --[[-------------------------------------------------------------------------
-	MintyRP — Bank / ATM client UI
+	MintyRP — Bank / ATM client UI (dark RP panel)
 	Realm: CLIENT
 ---------------------------------------------------------------------------]]
 
@@ -8,10 +8,17 @@ if not CLIENT then return end
 MintyRP.Bank = MintyRP.Bank or {}
 
 local frame
-local colMint = Color(62, 207, 142)
-local colAtm = Color(120, 190, 255)
-local colBg = Color(14, 20, 18, 245)
-local colDim = Color(150, 165, 158)
+
+local function col()
+	return (MintyRP.UI and MintyRP.UI.Colors) or {
+		bg = Color(18, 18, 20, 250),
+		accent = Color(72, 180, 130),
+		text = Color(235, 235, 238),
+		dim = Color(140, 140, 150),
+		panel = Color(28, 28, 32),
+		border = Color(55, 55, 62),
+	}
+end
 
 local function sendBank(action, amount)
 	amount = math.floor(tonumber(amount) or 0)
@@ -24,64 +31,65 @@ end
 
 local function openBank(cash, bank, isATM)
 	if IsValid(frame) then frame:Remove() end
-
-	local accent = isATM and colAtm or colMint
-	local title = isATM and "ATM" or "Rockford Bank"
+	local c = col()
+	local accent = isATM and Color(120, 180, 230) or c.accent
+	local title = isATM and "ATM" or "BANK"
 
 	frame = vgui.Create("DFrame")
-	frame:SetSize(380, 260)
+	frame:SetSize(400, 280)
 	frame:Center()
 	frame:SetTitle("")
 	frame:MakePopup()
+	frame:ShowCloseButton(false)
 	frame.Paint = function(_, w, h)
-		draw.RoundedBox(6, 0, 0, w, h, colBg)
-		draw.SimpleText(title, "DermaLarge", 16, 12, accent)
-		draw.SimpleText("Cash " .. (MintyRP.Util and MintyRP.Util.FormatMoney(cash) or ("$" .. cash))
-			.. "   ·   Bank " .. (MintyRP.Util and MintyRP.Util.FormatMoney(bank) or ("$" .. bank)),
-			"DermaDefault", 16, 44, colDim)
+		draw.RoundedBox(6, 0, 0, w, h, c.bg)
+		surface.SetDrawColor(c.border)
+		surface.DrawOutlinedRect(0, 0, w, h, 1)
+		draw.SimpleText(title, "DermaLarge", 18, 14, accent)
+		local money = MintyRP.Util and MintyRP.Util.FormatMoney or function(n) return "$" .. n end
+		draw.SimpleText("Cash " .. money(cash) .. "    Account " .. money(bank), "DermaDefault", 18, 48, c.dim)
 	end
+
+	local x = vgui.Create("DButton", frame)
+	x:SetPos(368, 10)
+	x:SetSize(24, 24)
+	x:SetText("✕")
+	x:SetTextColor(c.dim)
+	x.Paint = function() end
+	x.DoClick = function() frame:Close() end
 
 	local entry = vgui.Create("DTextEntry", frame)
-	entry:SetPos(16, 80)
-	entry:SetSize(348, 28)
+	entry:SetPos(18, 84)
+	entry:SetSize(364, 32)
 	entry:SetPlaceholderText("Amount")
 	entry:SetNumeric(true)
+	entry:SetPaintBackground(true)
 
-	local dep = vgui.Create("DButton", frame)
-	dep:SetPos(16, 124)
-	dep:SetSize(168, 36)
-	dep:SetText("Deposit")
-	dep.DoClick = function()
+	local function mk(px, py, pw, label, fn)
+		local b = vgui.Create("DButton", frame)
+		b:SetPos(px, py)
+		b:SetSize(pw, 36)
+		b:SetText(label)
+		b.DoClick = fn
+		return b
+	end
+
+	mk(18, 132, 176, "Deposit", function()
 		sendBank(1, entry:GetValue())
 		frame:Close()
-	end
-
-	local wit = vgui.Create("DButton", frame)
-	wit:SetPos(196, 124)
-	wit:SetSize(168, 36)
-	wit:SetText("Withdraw")
-	wit.DoClick = function()
+	end)
+	mk(206, 132, 176, "Withdraw", function()
 		sendBank(2, entry:GetValue())
 		frame:Close()
-	end
-
-	local allIn = vgui.Create("DButton", frame)
-	allIn:SetPos(16, 172)
-	allIn:SetSize(168, 28)
-	allIn:SetText("Deposit all cash")
-	allIn.DoClick = function()
+	end)
+	mk(18, 180, 176, "Deposit all", function()
 		sendBank(1, cash)
 		frame:Close()
-	end
-
-	local allOut = vgui.Create("DButton", frame)
-	allOut:SetPos(196, 172)
-	allOut:SetSize(168, 28)
-	allOut:SetText("Withdraw all bank")
-	allOut.DoClick = function()
+	end)
+	mk(206, 180, 176, "Withdraw all", function()
 		sendBank(2, bank)
 		frame:Close()
-	end
+	end)
 end
 
 net.Receive("MintyRP_BankOpen", function()

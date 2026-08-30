@@ -1,9 +1,9 @@
 --[[-------------------------------------------------------------------------
-	MintyRP — Inventory + dual-pane storage UI (Perpheads-style)
+	MintyRP — Perpheads-leaning inventory / storage UI
 	Realm: CLIENT
 
-	F2 — personal inventory (single pane)
-	E on storage — dual pane: You | Storage
+	Dark dual-pane, category rail, icon grid, weight bars.
+	F2 = pocket. E on storage = dual pane transfer.
 ---------------------------------------------------------------------------]]
 
 if not CLIENT then return end
@@ -27,11 +27,21 @@ MintyRP.Storage.Weight = 0
 MintyRP.Storage.MaxWeight = 100
 
 local frame
-local colMint = Color(62, 207, 142)
-local colBg = Color(14, 20, 18, 245)
-local colPane = Color(22, 32, 28)
-local colText = Color(230, 236, 232)
-local colDim = Color(150, 165, 158)
+local C = function()
+	return (MintyRP.UI and MintyRP.UI.Colors) or {
+		bg = Color(18, 18, 20, 250),
+		panel = Color(28, 28, 32),
+		slot = Color(42, 42, 48),
+		slotHov = Color(55, 55, 64),
+		slotSel = Color(62, 90, 78),
+		accent = Color(72, 180, 130),
+		text = Color(235, 235, 238),
+		dim = Color(140, 140, 150),
+		barBg = Color(20, 20, 24),
+		barFill = Color(72, 180, 130, 220),
+		border = Color(55, 55, 62),
+	}
+end
 
 net.Receive("MintyRP_InventorySync", function()
 	local count = net.ReadUInt(8)
@@ -46,16 +56,12 @@ net.Receive("MintyRP_InventorySync", function()
 	INV.ClientItems = items
 	INV.ClientWeight = net.ReadFloat()
 	INV.ClientMaxWeight = net.ReadFloat()
-
 	local ply = LocalPlayer()
 	if IsValid(ply) then
 		ply.MintyRP = ply.MintyRP or {}
 		ply.MintyRP.inventory = items
 	end
-
-	if IsValid(frame) and frame.Rebuild then
-		frame.Rebuild()
-	end
+	if IsValid(frame) and frame.Rebuild then frame.Rebuild() end
 end)
 
 net.Receive("MintyRP_StorageSync", function()
@@ -73,9 +79,7 @@ net.Receive("MintyRP_StorageSync", function()
 		end
 	end
 	MintyRP.Storage.Items = items
-	if IsValid(frame) and frame.Rebuild then
-		frame.Rebuild()
-	end
+	if IsValid(frame) and frame.Rebuild then frame.Rebuild() end
 end)
 
 net.Receive("MintyRP_StorageOpen", function()
@@ -86,8 +90,7 @@ net.Receive("MintyRP_StorageOpen", function()
 	INV.Open(true)
 end)
 
-local ACTION_DROP = 2
-local ACTION_USE = 3
+local ACTION_DROP, ACTION_USE = 2, 3
 
 local function sendInvAction(action, itemId, amount)
 	if type(itemId) ~= "string" or itemId == "" then return end
@@ -109,28 +112,6 @@ local function sendStorage(dir, itemId, amount)
 	net.SendToServer()
 end
 
-local function fillList(list, items)
-	list:Clear()
-	local sorted = table.Copy(items or {})
-	table.sort(sorted, function(a, b)
-		local da = INV.GetItem(a.item_id)
-		local db = INV.GetItem(b.item_id)
-		local ca = (da and INV.Categories[da.category] and INV.Categories[da.category].order) or 99
-		local cb = (db and INV.Categories[db.category] and INV.Categories[db.category].order) or 99
-		if ca ~= cb then return ca < cb end
-		return ((da and da.name) or a.item_id) < ((db and db.name) or b.item_id)
-	end)
-	for i = 1, #sorted do
-		local slot = sorted[i]
-		local def = INV.GetItem(slot.item_id)
-		local w = INV.GetStackWeight and INV.GetStackWeight(slot.item_id, slot.amount) or 0
-		local label = string.format("%s  x%d", (def and def.name) or slot.item_id, slot.amount)
-		local line = list:AddLine(label, string.format("%.1f", w), (def and def.category) or "misc")
-		line.ItemId = slot.item_id
-		line.Amount = slot.amount
-	end
-end
-
 local function closeStorageSession()
 	if MintyRP.Storage.Open then
 		net.Start("MintyRP_StorageClose")
@@ -141,6 +122,154 @@ local function closeStorageSession()
 	MintyRP.Storage.Items = {}
 end
 
+local function sortedItems(items, catFilter)
+	local out = {}
+	for i = 1, #(items or {}) do
+		local slot = items[i]
+		local def = INV.GetItem(slot.item_id)
+		local cat = (def and def.category) or "misc"
+		if not catFilter or catFilter == "all" or cat == catFilter then
+			out[#out + 1] = slot
+		end
+	end
+	table.sort(out, function(a, b)
+		local da, db = INV.GetItem(a.item_id), INV.GetItem(b.item_id)
+		local ca = (da and INV.Categories[da.category] and INV.Categories[da.category].order) or 99
+		local cb = (db and INV.Categories[db.category] and INV.Categories[db.category].order) or 99
+		if ca ~= cb then return ca < cb end
+		return ((da and da.name) or a.item_id) < ((db and db.name) or b.item_id)
+	end)
+	return out
+end
+
+local function makeWeightBar(parent, getVals)
+	local bar = vgui.Create("DPanel", parent)
+	bar:SetTall(18)
+	bar.Paint = function(_, w, h)
+		local col = C()
+		local cur, max = getVals()
+		max = math.max(max or 1, 0.01)
+		local frac = math.Clamp((cur or 0) / max, 0, 1)
+		draw.RoundedBox(3, 0, 0, w, h, col.barBg)
+		draw.RoundedBox(3, 0, 0, w * frac, h, col.barFill)
+		draw.SimpleText(
+			string.format("%.1f / %.1f kg", cur or 0, max),
+			"DermaDefault",
+			w * 0.5, h * 0.5,
+			col.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER
+		)
+	end
+	return bar
+end
+
+local function makeItemGrid(parent, opts)
+	local col = C()
+	local scroll = vgui.Create("DScrollPanel", parent)
+	local grid = vgui.Create("DIconLayout", scroll)
+	grid:Dock(FILL)
+	grid:SetSpaceX(6)
+	grid:SetSpaceY(6)
+	grid:DockMargin(4, 4, 4, 4)
+
+	local selected = { id = nil, amount = 1 }
+
+	function scroll:Rebuild(items)
+		grid:Clear()
+		selected.id = nil
+		local list = sortedItems(items, opts.getCategory and opts.getCategory())
+		for i = 1, #list do
+			local slot = list[i]
+			local def = INV.GetItem(slot.item_id)
+			local tile = grid:Add("DButton")
+			tile:SetSize(74, 86)
+			tile:SetText("")
+			tile.ItemId = slot.item_id
+			tile.Amount = slot.amount
+			tile.Paint = function(self, w, h)
+				local c = C()
+				local bg = (selected.id == self.ItemId) and c.slotSel or (self:IsHovered() and c.slotHov or c.slot)
+				draw.RoundedBox(4, 0, 0, w, h, bg)
+				surface.SetDrawColor(c.border)
+				surface.DrawOutlinedRect(0, 0, w, h, 1)
+				draw.SimpleText(
+					"x" .. tostring(self.Amount),
+					"DermaDefaultBold",
+					w - 6, 4,
+					c.accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP
+				)
+				local name = (def and def.name) or self.ItemId
+				if #name > 10 then name = string.sub(name, 1, 9) .. "…" end
+				draw.SimpleText(name, "DermaDefault", w * 0.5, h - 12, c.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+			end
+
+			local icon = vgui.Create("SpawnIcon", tile)
+			icon:SetPos(11, 14)
+			icon:SetSize(52, 52)
+			icon:SetModel((def and def.model) or "models/props_junk/cardboard_box004a.mdl")
+			icon:SetTooltip((def and def.name or slot.item_id) .. "\n" .. ((def and def.desc) or ""))
+			icon.DoClick = function()
+				selected.id = slot.item_id
+				selected.amount = slot.amount
+				if opts.onSelect then opts.onSelect(slot) end
+			end
+			icon.DoDoubleClick = function()
+				selected.id = slot.item_id
+				selected.amount = slot.amount
+				if opts.onDouble then opts.onDouble(slot) end
+			end
+			tile.DoClick = icon.DoClick
+			tile.DoDoubleClick = icon.DoDoubleClick
+		end
+		grid:InvalidateLayout(true)
+	end
+
+	scroll.GetSelected = function()
+		return selected.id, selected.amount
+	end
+
+	return scroll
+end
+
+local function makeCategoryRail(parent, onChange)
+	local col = C()
+	local rail = vgui.Create("DPanel", parent)
+	rail:SetWide(110)
+	rail.Paint = function(_, w, h)
+		draw.RoundedBox(4, 0, 0, w, h, C().panel)
+	end
+
+	local cats = { { id = "all", name = "All" } }
+	local order = { "weapons", "ammo", "food", "medical", "materials", "utilities", "misc" }
+	for _, id in ipairs(order) do
+		local c = INV.Categories and INV.Categories[id]
+		if c then cats[#cats + 1] = c end
+	end
+
+	local active = "all"
+	local y = 6
+	for i = 1, #cats do
+		local cat = cats[i]
+		local btn = vgui.Create("DButton", rail)
+		btn:SetPos(6, y)
+		btn:SetSize(98, 26)
+		btn:SetText("")
+		btn.Paint = function(self, w, h)
+			local c = C()
+			local on = active == cat.id
+			draw.RoundedBox(3, 0, 0, w, h, on and c.slotSel or (self:IsHovered() and c.slotHov or c.slot))
+			draw.SimpleText(cat.name, "DermaDefault", w * 0.5, h * 0.5, c.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+		btn.DoClick = function()
+			active = cat.id
+			if onChange then onChange(active) end
+		end
+		y = y + 30
+	end
+
+	rail.GetActive = function() return active end
+	return rail
+end
+
 function INV.Open(forceDual)
 	local wantDual = forceDual or MintyRP.Storage.Open
 
@@ -148,227 +277,234 @@ function INV.Open(forceDual)
 		local wasDual = frame.IsDual
 		frame:Close()
 		frame = nil
-		if not forceDual and wasDual then
+		if not forceDual then
 			closeStorageSession()
-			return
-		end
-		if not forceDual and not wantDual then
-			closeStorageSession()
-			return
+			if not wantDual or wasDual then return end
 		end
 	end
 
 	local dual = wantDual == true
-	local w, h = dual and 820 or 560, dual and 460 or 440
+	local sw, sh = ScrW(), ScrH()
+	local w = dual and math.min(980, sw * 0.82) or math.min(620, sw * 0.55)
+	local h = math.min(560, sh * 0.72)
 
 	frame = vgui.Create("DFrame")
 	frame:SetSize(w, h)
 	frame:Center()
 	frame:SetTitle("")
 	frame:MakePopup()
-	frame:SetKeyboardInputEnabled(false)
+	frame:ShowCloseButton(false)
+	frame:SetDraggable(true)
 	frame.IsDual = dual
 	frame.Paint = function(_, fw, fh)
-		draw.RoundedBox(6, 0, 0, fw, fh, colBg)
-		draw.SimpleText(dual and "Inventory  ·  Storage" or "Inventory", "DermaLarge", 16, 10, colMint)
+		local c = C()
+		draw.RoundedBox(6, 0, 0, fw, fh, c.bg)
+		surface.SetDrawColor(c.border)
+		surface.DrawOutlinedRect(0, 0, fw, fh, 1)
+		draw.SimpleText(dual and "INVENTORY  /  STORAGE" or "INVENTORY", "DermaLarge", 18, 14, c.accent)
+		draw.SimpleText("F2 close", "DermaDefault", fw - 18, 20, c.dim, TEXT_ALIGN_RIGHT)
 	end
 	frame.OnClose = function()
 		if dual then closeStorageSession() end
 		frame = nil
 	end
 
-	local sheet = vgui.Create("DPropertySheet", frame)
-	sheet:Dock(FILL)
-	sheet:DockMargin(8, 40, 8, 8)
+	local closeBtn = vgui.Create("DButton", frame)
+	closeBtn:SetPos(w - 36, 10)
+	closeBtn:SetSize(24, 24)
+	closeBtn:SetText("✕")
+	closeBtn:SetTextColor(C().dim)
+	closeBtn.Paint = function() end
+	closeBtn.DoClick = function() frame:Close() end
 
-	-- ── Items / dual pane ─────────────────────────────────
-	local itemsPanel = vgui.Create("DPanel", sheet)
-	itemsPanel.Paint = function() end
+	local body = vgui.Create("DPanel", frame)
+	body:Dock(FILL)
+	body:DockMargin(12, 44, 12, 12)
+	body.Paint = function() end
 
-	local leftW = dual and 360 or 520
+	local catFilter = "all"
+	local leftPane = vgui.Create("DPanel", body)
+	leftPane.Paint = function(_, pw, ph)
+		draw.RoundedBox(4, 0, 0, pw, ph, C().panel)
+	end
 
-	local youLabel = vgui.Create("DLabel", itemsPanel)
-	youLabel:SetPos(8, 4)
-	youLabel:SetSize(leftW, 18)
-	youLabel:SetTextColor(colDim)
-
-	local youList = vgui.Create("DListView", itemsPanel)
-	youList:SetPos(8, 24)
-	youList:SetSize(leftW, dual and 300 or 280)
-	youList:AddColumn("Item")
-	youList:AddColumn("Wt"):SetFixedWidth(48)
-	youList:AddColumn("Cat"):SetFixedWidth(72)
-	youList:SetMultiSelect(false)
-
-	local storList, storLabel
+	local rightPane
 	if dual then
-		storLabel = vgui.Create("DLabel", itemsPanel)
-		storLabel:SetPos(400, 4)
-		storLabel:SetSize(380, 18)
-		storLabel:SetTextColor(colDim)
+		leftPane:Dock(LEFT)
+		leftPane:SetWide(w * 0.42)
+		leftPane:DockMargin(0, 0, 8, 0)
 
-		storList = vgui.Create("DListView", itemsPanel)
-		storList:SetPos(400, 24)
-		storList:SetSize(380, 300)
-		storList:AddColumn("Item")
-		storList:AddColumn("Wt"):SetFixedWidth(48)
-		storList:AddColumn("Cat"):SetFixedWidth(72)
-		storList:SetMultiSelect(false)
+		rightPane = vgui.Create("DPanel", body)
+		rightPane:Dock(FILL)
+		rightPane.Paint = function(_, pw, ph)
+			draw.RoundedBox(4, 0, 0, pw, ph, C().panel)
+		end
+	else
+		leftPane:Dock(FILL)
+	end
 
-		local dep = vgui.Create("DButton", itemsPanel)
-		dep:SetPos(290, 332)
-		dep:SetSize(90, 28)
-		dep:SetText("Deposit →")
-		dep.DoClick = function()
-			local idx = youList:GetSelectedLine()
-			if not idx then return end
-			local row = youList:GetLine(idx)
-			if row and row.ItemId then
-				sendStorage(1, row.ItemId, 1)
+	-- Left: categories + grid
+	local rail = makeCategoryRail(leftPane, function(id)
+		catFilter = id
+		if frame.Rebuild then frame.Rebuild() end
+	end)
+	rail:Dock(LEFT)
+	rail:DockMargin(6, 36, 0, 40)
+
+	local leftHead = vgui.Create("DLabel", leftPane)
+	leftHead:SetPos(122, 8)
+	leftHead:SetSize(280, 20)
+	leftHead:SetText("YOU")
+	leftHead:SetTextColor(C().accent)
+	leftHead:SetFont("DermaDefaultBold")
+
+	local youGrid
+	youGrid = makeItemGrid(leftPane, {
+		getCategory = function() return catFilter end,
+		onSelect = function() end,
+		onDouble = function(slot)
+			if dual then
+				sendStorage(1, slot.item_id, 1)
+			else
+				sendInvAction(ACTION_USE, slot.item_id, 1)
+			end
+		end,
+	})
+	youGrid:Dock(FILL)
+	youGrid:DockMargin(4, 32, 6, 44)
+
+	local youBar = makeWeightBar(leftPane, function()
+		return INV.ClientWeight, INV.ClientMaxWeight
+	end)
+	youBar:Dock(BOTTOM)
+	youBar:DockMargin(122, 0, 8, 8)
+
+	local leftActions = vgui.Create("DPanel", leftPane)
+	leftActions:Dock(BOTTOM)
+	leftActions:SetTall(30)
+	leftActions:DockMargin(122, 0, 8, 4)
+	leftActions.Paint = function() end
+
+	local useBtn = vgui.Create("DButton", leftActions)
+	useBtn:Dock(LEFT)
+	useBtn:SetWide(70)
+	useBtn:SetText("Use")
+	useBtn.DoClick = function()
+		local id = youGrid:GetSelected()
+		if id then sendInvAction(ACTION_USE, id, 1) end
+	end
+
+	local dropBtn = vgui.Create("DButton", leftActions)
+	dropBtn:Dock(LEFT)
+	dropBtn:SetWide(70)
+	dropBtn:DockMargin(4, 0, 0, 0)
+	dropBtn:SetText("Drop")
+	dropBtn.DoClick = function()
+		local id = youGrid:GetSelected()
+		if id then sendInvAction(ACTION_DROP, id, 1) end
+	end
+
+	if dual then
+		local depBtn = vgui.Create("DButton", leftActions)
+		depBtn:Dock(LEFT)
+		depBtn:SetWide(90)
+		depBtn:DockMargin(4, 0, 0, 0)
+		depBtn:SetText("Deposit →")
+		depBtn.DoClick = function()
+			local id, amt = youGrid:GetSelected()
+			if id then sendStorage(1, id, 1) end
+		end
+		local depStack = vgui.Create("DButton", leftActions)
+		depStack:Dock(LEFT)
+		depStack:SetWide(80)
+		depStack:DockMargin(4, 0, 0, 0)
+		depStack:SetText("Dep. all")
+		depStack.DoClick = function()
+			local id, amt = youGrid:GetSelected()
+			if id then sendStorage(1, id, amt or 1) end
+		end
+
+		local rightHead = vgui.Create("DLabel", rightPane)
+		rightHead:Dock(TOP)
+		rightHead:SetTall(24)
+		rightHead:DockMargin(10, 8, 10, 0)
+		rightHead:SetTextColor(C().accent)
+		rightHead:SetFont("DermaDefaultBold")
+		rightHead:SetText(string.upper(MintyRP.Storage.Name or "STORAGE"))
+
+		local storGrid = makeItemGrid(rightPane, {
+			getCategory = function() return "all" end,
+			onDouble = function(slot)
+				sendStorage(2, slot.item_id, 1)
+			end,
+		})
+		storGrid:Dock(FILL)
+		storGrid:DockMargin(6, 4, 6, 4)
+
+		local storBar = makeWeightBar(rightPane, function()
+			return MintyRP.Storage.Weight, MintyRP.Storage.MaxWeight
+		end)
+		storBar:Dock(BOTTOM)
+		storBar:DockMargin(10, 0, 10, 8)
+
+		local rightActions = vgui.Create("DPanel", rightPane)
+		rightActions:Dock(BOTTOM)
+		rightActions:SetTall(30)
+		rightActions:DockMargin(10, 0, 10, 4)
+		rightActions.Paint = function() end
+
+		local witBtn = vgui.Create("DButton", rightActions)
+		witBtn:Dock(LEFT)
+		witBtn:SetWide(100)
+		witBtn:SetText("← Withdraw")
+		witBtn.DoClick = function()
+			local id = storGrid:GetSelected()
+			if id then sendStorage(2, id, 1) end
+		end
+		local witStack = vgui.Create("DButton", rightActions)
+		witStack:Dock(LEFT)
+		witStack:SetWide(90)
+		witStack:DockMargin(4, 0, 0, 0)
+		witStack:SetText("Wit. all")
+		witStack.DoClick = function()
+			local id, amt = storGrid:GetSelected()
+			if id then sendStorage(2, id, amt or 1) end
+		end
+
+		frame.Rebuild = function()
+			rightHead:SetText(string.upper(MintyRP.Storage.Name or "STORAGE"))
+			youGrid:Rebuild(INV.ClientItems)
+			storGrid:Rebuild(MintyRP.Storage.Items)
+		end
+	else
+		-- Work strip when not in storage
+		local workHint = vgui.Create("DButton", leftActions)
+		workHint:Dock(RIGHT)
+		workHint:SetWide(100)
+		workHint:SetText("Work jobs")
+		workHint.DoClick = function()
+			if MintyRP.Economy and MintyRP.Economy.RequestJob then
+				-- Quick open: cycle isn't ideal; notify to use F2 work — keep simple paycheck open via chat
+				local jobs = MintyRP.Economy.Jobs or {}
+				local menu = DermaMenu()
+				for _, id in ipairs({ "unemployed", "labourer", "courier", "mechanic" }) do
+					local j = jobs[id]
+					if j then
+						menu:AddOption(j.name .. " ($" .. j.paycheck .. ")", function()
+							MintyRP.Economy.RequestJob(j.id)
+						end)
+					end
+				end
+				menu:Open()
 			end
 		end
 
-		local wit = vgui.Create("DButton", itemsPanel)
-		wit:SetPos(400, 332)
-		wit:SetSize(90, 28)
-		wit:SetText("← Withdraw")
-		wit.DoClick = function()
-			local idx = storList:GetSelectedLine()
-			if not idx then return end
-			local row = storList:GetLine(idx)
-			if row and row.ItemId then
-				sendStorage(2, row.ItemId, 1)
-			end
-		end
-
-		local depAll = vgui.Create("DButton", itemsPanel)
-		depAll:SetPos(290, 364)
-		depAll:SetSize(90, 24)
-		depAll:SetText("Dep. stack")
-		depAll.DoClick = function()
-			local idx = youList:GetSelectedLine()
-			if not idx then return end
-			local row = youList:GetLine(idx)
-			if row and row.ItemId then
-				sendStorage(1, row.ItemId, row.Amount or 1)
-			end
-		end
-
-		local witAll = vgui.Create("DButton", itemsPanel)
-		witAll:SetPos(400, 364)
-		witAll:SetSize(90, 24)
-		witAll:SetText("Wit. stack")
-		witAll.DoClick = function()
-			local idx = storList:GetSelectedLine()
-			if not idx then return end
-			local row = storList:GetLine(idx)
-			if row and row.ItemId then
-				sendStorage(2, row.ItemId, row.Amount or 1)
-			end
-		end
-	end
-
-	local btnUse = vgui.Create("DButton", itemsPanel)
-	btnUse:SetPos(8, dual and 332 or 314)
-	btnUse:SetSize(80, 28)
-	btnUse:SetText("Use")
-	btnUse.DoClick = function()
-		local idx = youList:GetSelectedLine()
-		if not idx then return end
-		local row = youList:GetLine(idx)
-		if row and row.ItemId then sendInvAction(ACTION_USE, row.ItemId, 1) end
-	end
-
-	local btnDrop = vgui.Create("DButton", itemsPanel)
-	btnDrop:SetPos(96, dual and 332 or 314)
-	btnDrop:SetSize(80, 28)
-	btnDrop:SetText("Drop 1")
-	btnDrop.DoClick = function()
-		local idx = youList:GetSelectedLine()
-		if not idx then return end
-		local row = youList:GetLine(idx)
-		if row and row.ItemId then sendInvAction(ACTION_DROP, row.ItemId, 1) end
-	end
-
-	if not dual then
-		local hint = vgui.Create("DLabel", itemsPanel)
-		hint:SetPos(190, 318)
-		hint:SetSize(300, 24)
-		hint:SetTextColor(colDim)
-		hint:SetText("F2 toggle  ·  E on a crate for storage")
-	end
-
-	frame.Rebuild = function()
-		if not IsValid(youList) then return end
-		youLabel:SetText(string.format("You  ·  %.1f / %.1f kg", INV.ClientWeight, INV.ClientMaxWeight))
-		fillList(youList, INV.ClientItems)
-		if dual and IsValid(storList) then
-			storLabel:SetText(string.format("%s  ·  %.1f / %.1f kg",
-				MintyRP.Storage.Name or "Storage",
-				MintyRP.Storage.Weight or 0,
-				MintyRP.Storage.MaxWeight or 100
-			))
-			fillList(storList, MintyRP.Storage.Items)
+		frame.Rebuild = function()
+			youGrid:Rebuild(INV.ClientItems)
 		end
 	end
 
 	INV.RebuildList = frame.Rebuild
-	sheet:AddSheet(dual and "Transfer" or "Items", itemsPanel, "icon16/box.png")
-
-	-- Work tab (economy)
-	if MintyRP.Economy and MintyRP.Economy.Jobs then
-		local work = vgui.Create("DPanel", sheet)
-		work.Paint = function() end
-		local header = vgui.Create("DLabel", work)
-		header:Dock(TOP)
-		header:DockMargin(8, 8, 8, 4)
-		header:SetTall(22)
-		header:SetText("Clock in for a higher paycheck (every 5 min → bank)")
-
-		local current = vgui.Create("DLabel", work)
-		current:Dock(TOP)
-		current:DockMargin(8, 0, 8, 8)
-		current:SetTall(18)
-
-		local list = vgui.Create("DListView", work)
-		list:Dock(FILL)
-		list:DockMargin(8, 0, 8, 8)
-		list:AddColumn("Job")
-		list:AddColumn("Pay"):SetFixedWidth(80)
-		list:AddColumn("Description")
-
-		local order = { "unemployed", "labourer", "courier", "mechanic" }
-		local function refreshWork()
-			list:Clear()
-			local my = MintyRP.Economy.MyJob or "unemployed"
-			local mine = MintyRP.Economy.Jobs[my]
-			current:SetText("Current: " .. ((mine and mine.name) or my))
-			for _, id in ipairs(order) do
-				local j = MintyRP.Economy.Jobs[id]
-				if j then
-					local line = list:AddLine(j.name, "$" .. string.Comma(j.paycheck), j.desc or "")
-					line.JobId = j.id
-				end
-			end
-		end
-		local btn = vgui.Create("DButton", work)
-		btn:Dock(BOTTOM)
-		btn:DockMargin(8, 0, 8, 8)
-		btn:SetTall(30)
-		btn:SetText("Clock In")
-		btn.DoClick = function()
-			local idx = list:GetSelectedLine()
-			if not idx then return end
-			local row = list:GetLine(idx)
-			if row and row.JobId then
-				MintyRP.Economy.RequestJob(row.JobId)
-				timer.Simple(0.35, refreshWork)
-			end
-		end
-		refreshWork()
-		sheet:AddSheet("Work", work, "icon16/money.png")
-	end
-
 	frame.Rebuild()
 end
 
