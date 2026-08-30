@@ -19,6 +19,7 @@ local colDim = Color(180, 180, 175)
 
 -- CharacterReady is handled in modules/character/cl_character.lua (includes RP name)
 
+-- Show bank balance under cash
 hook.Add("HUDPaint", "MintyRP_CoreHUD", function()
 	local ply = LocalPlayer()
 	if not IsValid(ply) or not ply:Alive() then return end
@@ -26,18 +27,29 @@ hook.Add("HUDPaint", "MintyRP_CoreHUD", function()
 
 	local h = ScrH()
 	local cash = ply.MintyRP.money or 0
+	local bank = ply.MintyRP.bank or 0
 	local rpName = ply.MintyRP.rpName or ply:GetNWString("MintyRP_RPName", "")
 
 	if rpName ~= "" then
-		draw_SimpleText(rpName, "DermaDefaultBold", 24, h - 68, colDim, TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+		draw_SimpleText(rpName, "DermaDefaultBold", 24, h - 86, colDim, TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
 	end
 
 	draw_SimpleText(
 		MintyRP.Util and MintyRP.Util.FormatMoney(cash) or ("$" .. cash),
 		"DermaLarge",
 		24,
-		h - 48,
+		h - 64,
 		colText,
+		TEXT_ALIGN_LEFT,
+		TEXT_ALIGN_BOTTOM
+	)
+
+	draw_SimpleText(
+		"Bank " .. (MintyRP.Util and MintyRP.Util.FormatMoney(bank) or ("$" .. bank)),
+		"DermaDefault",
+		24,
+		h - 44,
+		colDim,
 		TEXT_ALIGN_LEFT,
 		TEXT_ALIGN_BOTTOM
 	)

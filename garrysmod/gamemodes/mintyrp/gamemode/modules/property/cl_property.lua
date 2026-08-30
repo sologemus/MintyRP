@@ -72,14 +72,14 @@ hook.Add("HUDPaint", "MintyRP_PropertyDoorHint", function()
 	draw.SimpleText(def.name, "DermaDefaultBold", x, y, colMint, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
 	if owned then
 		draw.SimpleText(
-			(locked and "Locked" or "Unlocked") .. "  ·  [F3] Manage  ·  [E] Use",
+			(locked and "Locked" or "Unlocked") .. "  ·  [F3] Manage  ·  Keys: LMB/RMB",
 			"DermaDefault",
 			x, y + 18, colText, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
 		)
 	else
 		local price = MintyRP.Util and MintyRP.Util.FormatMoney(def.price) or ("$" .. def.price)
 		draw.SimpleText(
-			"For sale: " .. price .. "  ·  Press [B] to buy",
+			"For sale: " .. price .. "  ·  Press [N] to buy",
 			"DermaDefault",
 			x, y + 18, colText, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP
 		)
@@ -94,7 +94,7 @@ function Prop.OpenMenu()
 	end
 
 	menuFrame = vgui.Create("DFrame")
-	menuFrame:SetSize(460, 360)
+	menuFrame:SetSize(520, 420)
 	menuFrame:Center()
 	menuFrame:SetTitle("")
 	menuFrame:MakePopup()
@@ -102,29 +102,32 @@ function Prop.OpenMenu()
 	menuFrame.Paint = function(_, w, h)
 		draw.RoundedBox(6, 0, 0, w, h, colBg)
 		draw.SimpleText("Properties", "DermaLarge", 16, 12, colMint, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-		draw.SimpleText("Owned homes & storefronts", "DermaDefault", 16, 42, colDim, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+		draw.SimpleText("Owned units  ·  Buy at doors with [N]", "DermaDefault", 16, 42, colDim, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 	end
 
-	local list = vgui.Create("DScrollPanel", menuFrame)
-	list:Dock(FILL)
-	list:DockMargin(12, 64, 12, 12)
+	local sheet = vgui.Create("DPropertySheet", menuFrame)
+	sheet:Dock(FILL)
+	sheet:DockMargin(12, 64, 12, 12)
 
+	-- Owned
+	local ownedPanel = vgui.Create("DScrollPanel", sheet)
 	local count = 0
 	for id, locked in pairs(Prop.Owned) do
 		count = count + 1
 		local def = Prop.Get(id)
-		local row = list:Add("DPanel")
+		local row = ownedPanel:Add("DPanel")
 		row:Dock(TOP)
 		row:SetTall(72)
 		row:DockMargin(0, 0, 0, 8)
 		row.Paint = function(_, w, h)
 			draw.RoundedBox(4, 0, 0, w, h, Color(22, 32, 28))
 			draw.SimpleText(def and def.name or id, "DermaDefaultBold", 12, 10, colText)
-			draw.SimpleText(locked and "Locked" or "Unlocked", "DermaDefault", 12, 32, colDim)
+			local meta = (def and def.district or "?") .. " · " .. (def and def.category or "?")
+			draw.SimpleText(meta .. "  ·  " .. (locked and "Locked" or "Unlocked"), "DermaDefault", 12, 32, colDim)
 		end
 
 		local lockBtn = vgui.Create("DButton", row)
-		lockBtn:SetPos(260, 20)
+		lockBtn:SetPos(300, 20)
 		lockBtn:SetSize(80, 28)
 		lockBtn:SetText(locked and "Unlock" or "Lock")
 		lockBtn.DoClick = function()
@@ -139,7 +142,7 @@ function Prop.OpenMenu()
 		end
 
 		local sellBtn = vgui.Create("DButton", row)
-		sellBtn:SetPos(350, 20)
+		sellBtn:SetPos(390, 20)
 		sellBtn:SetSize(80, 28)
 		sellBtn:SetText("Sell 50%")
 		sellBtn.DoClick = function()
@@ -153,14 +156,45 @@ function Prop.OpenMenu()
 			end)
 		end
 	end
-
 	if count == 0 then
-		local empty = list:Add("DLabel")
+		local empty = ownedPanel:Add("DLabel")
 		empty:Dock(TOP)
 		empty:SetTall(40)
 		empty:SetTextColor(colDim)
-		empty:SetText("No properties yet. Look at a for-sale door and press B.")
+		empty:SetText("No owned properties. Look at a door and press N.")
 	end
+	sheet:AddSheet("Owned", ownedPanel, "icon16/key.png")
+
+	-- Catalog by district
+	local catalog = vgui.Create("DScrollPanel", sheet)
+	local sorted = Prop.GetSorted and Prop.GetSorted() or {}
+	local lastDistrict = ""
+	for i = 1, #sorted do
+		local def = sorted[i]
+		if def.district ~= lastDistrict then
+			lastDistrict = def.district
+			local header = catalog:Add("DLabel")
+			header:Dock(TOP)
+			header:SetTall(28)
+			header:DockMargin(0, 8, 0, 4)
+			header:SetTextColor(colMint)
+			header:SetFont("DermaDefaultBold")
+			header:SetText(string.upper(lastDistrict or "other"))
+		end
+
+		local owned = Prop.Owned[def.id] ~= nil
+		local row = catalog:Add("DPanel")
+		row:Dock(TOP)
+		row:SetTall(36)
+		row:DockMargin(0, 0, 0, 4)
+		row.Paint = function(_, w, h)
+			draw.RoundedBox(3, 0, 0, w, h, Color(22, 32, 28))
+			draw.SimpleText(def.name, "DermaDefault", 10, h * 0.5, colText, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			local right = owned and "OWNED" or (MintyRP.Util and MintyRP.Util.FormatMoney(def.price) or ("$" .. def.price))
+			draw.SimpleText(right, "DermaDefault", w - 10, h * 0.5, owned and colMint or colDim, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+		end
+	end
+	sheet:AddSheet("Catalog", catalog, "icon16/house.png")
 end
 
 hook.Add("PlayerButtonDown", "MintyRP_PropertyKeys", function(ply, button)
@@ -172,7 +206,8 @@ hook.Add("PlayerButtonDown", "MintyRP_PropertyKeys", function(ply, button)
 		return
 	end
 
-	if button == KEY_B then
+	-- N = buy (B is GMod zoom — do not use)
+	if button == KEY_N then
 		local door = tracedDoor()
 		if not door then return end
 		local id = door:GetNWString("MintyRP_Property", "")

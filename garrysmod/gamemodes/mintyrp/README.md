@@ -23,10 +23,14 @@ The main-menu / home-screen logo is `logo.png` (+ `icon24.png`) in the gamemode 
 | Key | Action |
 |-----|--------|
 | F2 | Toggle inventory |
-| F3 | Manage owned properties |
-| B | Buy property while looking at its door |
+| F3 | Properties (owned + full catalog) |
+| N | Buy property while looking at its door |
+| Keys weapon | LMB lock / RMB unlock owned doors |
+| E on bank teller | Deposit / withdraw |
 
-Superadmins: `mintyrp_dumppos` prints position; `mintyrp_propscan` rescans doors; `mintyrp_dbreset` wipes MintyRP DB tables.
+Spawn loadout: **fists**, **physgun**, **keys**.
+
+Superadmins: `mintyrp_dumppos`, `mintyrp_propscan`, `mintyrp_dbreset`.
 
 ## Layout
 

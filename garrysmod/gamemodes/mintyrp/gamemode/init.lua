@@ -17,6 +17,9 @@ util.AddNetworkString("MintyRP_CharacterSelect")
 util.AddNetworkString("MintyRP_CharacterCreate")
 util.AddNetworkString("MintyRP_PropertyAction")
 util.AddNetworkString("MintyRP_PropertySync")
+util.AddNetworkString("MintyRP_BankOpen")
+util.AddNetworkString("MintyRP_BankAction")
+util.AddNetworkString("MintyRP_BankSync")
 
 include("shared.lua")
 
@@ -95,15 +98,14 @@ function GM:PlayerLoadout(ply)
 	ply:StripWeapons()
 	ply:StripAmmo()
 
-	-- No toys until a character is selected
 	if not ply.MintyRP or not ply.MintyRP.Loaded or ply.MintyRP.InCharacterMenu then
 		return true
 	end
 
-	ply:Give("weapon_physcannon")
-	ply:Give("weapon_physgun")
-	ply:Give("gmod_tool")
 	ply:Give("weapon_fists")
+	ply:Give("weapon_physgun")
+	ply:Give("mintyrp_keys")
+	ply:SelectWeapon("mintyrp_keys")
 	return true
 end
 
